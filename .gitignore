@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Portfolio tracker runtime data
+data/portfolio_snapshots/*.json
+data/trade_history.json
+data/rationale_log.json
+output/prompts/*.txt
