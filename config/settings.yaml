@@ -1,0 +1,21 @@
+# Portfolio Tracker Settings
+
+# Data storage paths
+data_dir: "data"
+snapshots_dir: "data/portfolio_snapshots"
+trade_history_file: "data/trade_history.json"
+rationale_log_file: "data/rationale_log.json"
+output_dir: "output/prompts"
+
+# Market data settings
+market_data_provider: "yfinance"
+quote_cache_ttl_seconds: 300  # 5 minutes
+
+# Prompt engine settings
+default_prompt_type: "trade"
+max_prompt_tokens: 4000
+recent_trades_count: 10
+
+# CLI settings
+date_format: "%Y-%m-%d"
+datetime_format: "%Y-%m-%d %H:%M"

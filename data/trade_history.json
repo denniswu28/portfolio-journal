@@ -1,0 +1,16 @@
+[
+  {
+    "id": "1e393c6d-87e8-46ec-bf4a-9d8ee74539c5",
+    "ticker": "BABA",
+    "action": "BUY",
+    "shares": 100,
+    "price": 120.0,
+    "total_value": 12000.0,
+    "rationale": "Strong technical breakout above 50-day MA",
+    "timestamp": "2026-04-21T23:45:51.782518",
+    "tags": [
+      "momentum",
+      "china"
+    ]
+  }
+]

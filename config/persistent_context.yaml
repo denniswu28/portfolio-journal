@@ -1,0 +1,32 @@
+# Persistent context for LLM prompt generation
+# Edit this file to customize your investment strategy and constraints
+
+investment_strategy: >
+  Growth-oriented paper trading strategy focused on momentum stocks and
+  sector rotation. Seeking to outperform the S&P 500 benchmark over a
+  6-month horizon using a concentrated portfolio of 5-10 positions.
+
+risk_tolerance: "Moderate-Aggressive"
+
+investment_horizon: "6 months"
+
+constraints:
+  - "No single position > 35% of portfolio"
+  - "Keep at least 5% cash reserve"
+  - "No leveraged ETFs or options"
+  - "No penny stocks (price < $5)"
+  - "Maximum 3 trades per week"
+
+rules:
+  - "Take profits when unrealized gain exceeds 50%"
+  - "Cut losses at -15% from entry"
+  - "Always document rationale before entering a trade"
+  - "Review portfolio every Monday morning"
+  - "Consider sector concentration before adding new positions"
+
+benchmark: "SPY"
+
+notes: >
+  This is a paper trading account on Investopedia Simulator.
+  All trades are simulated with no real money involved.
+  Use this context to generate disciplined trade recommendations.
