@@ -122,6 +122,13 @@ class CSVLoader:
                 total_value=total_value,
             )
 
+        if {"ticker", "shares", "currentprice"}.issubset(normalized_columns):
+            missing = LEGACY_REQUIRED_COLUMNS - set(normalized_columns)
+            raise ValueError(
+                f"CSV is missing required columns: {missing}. "
+                "Required: {'ticker', 'shares', 'cost_basis', 'current_price'}"
+            )
+
         if _matches_fidelity_schema(normalized_columns):
             return self._load_fidelity_csv(
                 df=df,
@@ -295,8 +302,8 @@ def _aggregate_positions(positions: list[RawPosition]) -> list[RawPosition]:
 
         total_shares = existing.shares + position.shares
         total_cost_basis = (
-            existing.cost_basis_per_share * existing.shares
-            + position.cost_basis_per_share * position.shares
+            (existing.market_value - existing.gain_loss)
+            + (position.market_value - position.gain_loss)
         )
         total_market_value = existing.market_value + position.market_value
         total_gain_loss = existing.gain_loss + position.gain_loss
