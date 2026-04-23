@@ -111,7 +111,7 @@ class CSVLoader:
         if not path.exists():
             raise FileNotFoundError(f"CSV file not found: {filepath}")
 
-        df = pd.read_csv(path, dtype=str)
+        df = pd.read_csv(path, dtype=str, index_col=False)
         normalized_columns = {_normalize_column_name(c): c for c in df.columns}
 
         if LEGACY_REQUIRED_COLUMNS.issubset(normalized_columns):

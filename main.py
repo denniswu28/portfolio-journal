@@ -2,14 +2,14 @@
 main.py - CLI entry point for the portfolio tracker.
 
 Commands:
-  sync --paste          Paste portfolio text interactively
-  sync --file FILE      Load portfolio from a .txt file
-  sync --csv FILE       Load portfolio from a CSV file
+    sync --input-file     Load portfolio from a Fidelity positions CSV file
   status                Show current portfolio summary
   analytics             Show performance metrics
   log-trade             Log a new trade with rationale
   history               Show recent trade history
   prompt                Generate an LLM prompt
+    journal               Show a daily journal entry
+    record-decision       Save an LLM response into the journal
 """
 
 from __future__ import annotations
@@ -27,12 +27,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data_ingestion.csv_loader import CSVLoader
 from src.data_ingestion.models import PersistentContext
-from src.data_ingestion.paste_parser import PasteParser
 from src.portfolio.analytics import compute_metrics
 from src.portfolio.tracker import PortfolioTracker
 from src.prompt_engine.formatter import estimate_tokens, truncate_to_budget
 from src.prompt_engine.prompt_builder import generate_prompt
 from src.trade_log.history import TradeHistory
+from src.trade_log.journal import JournalStore
 from src.trade_log.logger import TradeLogger
 from src.utils.config_loader import load_persistent_context, load_settings
 
@@ -50,6 +50,31 @@ def _load_config():
     return settings, ctx
 
 
+def _get_journal_store(settings):
+    """Return the daily journal store configured for this workspace."""
+    return JournalStore(settings.get("journal_file", "data/journal.json"))
+
+
+def _compute_snapshot_metrics(tracker, trades, current_snapshot=None):
+    """Compute metrics from saved snapshots, optionally including an unsaved snapshot."""
+    snapshots = [tracker.load_snapshot(path) for path in tracker.list_snapshots()]
+    if current_snapshot is not None and (
+        not snapshots or snapshots[-1].timestamp != current_snapshot.timestamp
+    ):
+        snapshots.append(current_snapshot)
+    if not snapshots:
+        return None
+    return compute_metrics(snapshots, trades)
+
+
+def _get_latest_snapshot_path(tracker):
+    """Return the latest saved snapshot path, if any."""
+    snapshot_files = tracker.list_snapshots()
+    if not snapshot_files:
+        return None
+    return snapshot_files[-1]
+
+
 @click.group()
 def cli():
     """Portfolio Tracker — sync holdings, analyse them, and generate LLM prompts."""
@@ -58,56 +83,20 @@ def cli():
 # ── SYNC ─────────────────────────────────────────────────────────────────────
 
 @cli.command()
-@click.option("--paste", "mode", flag_value="paste", default=True, help="Paste portfolio text interactively.")
-@click.option("--file", "mode", flag_value="file", help="Load from a .txt file.")
-@click.option("--csv", "mode", flag_value="csv", help="Load from a CSV file.")
-@click.option("--input-file", "-i", default=None, help="Path to input file (for --file and --csv modes).")
-@click.option("--cash", default=None, type=float, help="Cash balance override (CSV mode only).")
+@click.option("--input-file", "-i", required=True, help="Path to the Fidelity positions CSV file.")
+@click.option("--cash", default=None, type=float, help="Cash balance override if you need to supplement the Fidelity CSV.")
 @click.option("--refresh-prices", is_flag=True, default=False, help="Fetch live prices from yfinance.")
 @click.option("--save/--no-save", default=True, help="Save snapshot to disk.")
-def sync(mode, input_file, cash, refresh_prices, save):
-    """Sync portfolio from paste, file, or CSV and save a snapshot."""
+def sync(input_file, cash, refresh_prices, save):
+    """Sync portfolio from a Fidelity CSV and save a snapshot."""
     settings, _ = _load_config()
 
-    parser = PasteParser()
     csv_loader = CSVLoader()
 
-    if mode == "paste":
-        click.echo("Paste your Investopedia portfolio text below.")
-        click.echo("When done, press Ctrl+D (Unix) or Ctrl+Z then Enter (Windows):")
-        click.echo("─" * 60)
-        try:
-            raw_text = sys.stdin.read()
-        except KeyboardInterrupt:
-            click.echo("\nAborted.")
-            return
-        try:
-            raw_data = parser.parse(raw_text)
-        except ValueError as e:
-            click.secho(f"Error parsing text: {e}", fg="red")
-            sys.exit(1)
-
-    elif mode == "file":
-        if not input_file:
-            click.secho("--input-file is required with --file mode.", fg="red")
-            sys.exit(1)
-        try:
-            raw_data = parser.parse_from_file(input_file)
-        except (FileNotFoundError, ValueError) as e:
-            click.secho(f"Error: {e}", fg="red")
-            sys.exit(1)
-
-    elif mode == "csv":
-        if not input_file:
-            click.secho("--input-file is required with --csv mode.", fg="red")
-            sys.exit(1)
-        try:
-            raw_data = csv_loader.load(input_file, cash=cash or 0.0)
-        except (FileNotFoundError, ValueError) as e:
-            click.secho(f"Error: {e}", fg="red")
-            sys.exit(1)
-    else:
-        click.secho("Unknown mode. Use --paste, --file, or --csv.", fg="red")
+    try:
+        raw_data = csv_loader.load(input_file, cash=cash or 0.0)
+    except (FileNotFoundError, ValueError) as e:
+        click.secho(f"Error: {e}", fg="red")
         sys.exit(1)
 
     snapshots_dir = settings.get("snapshots_dir", "data/portfolio_snapshots")
@@ -115,12 +104,27 @@ def sync(mode, input_file, cash, refresh_prices, save):
 
     trade_logger = TradeLogger(settings.get("trade_history_file", "data/trade_history.json"))
     trades = trade_logger.load_all()
+    journal_store = _get_journal_store(settings)
 
     snapshot = tracker.build_snapshot(raw_data, trade_history=trades)
+    snapshot_path = ""
 
     if save:
         path = tracker.save_snapshot(snapshot)
+        snapshot_path = str(path)
         click.secho(f"Snapshot saved: {path}", fg="green")
+
+    metrics = _compute_snapshot_metrics(
+        tracker,
+        trades,
+        current_snapshot=None if save else snapshot,
+    )
+    journal_store.record_snapshot(
+        snapshot=snapshot,
+        snapshot_path=snapshot_path,
+        trades=trades,
+        metrics=metrics,
+    )
 
     # Show brief summary
     click.echo(f"\nPortfolio Value: ${snapshot.total_portfolio_value:,.2f}")
@@ -236,6 +240,7 @@ def log_trade(ticker, action, shares, price, rationale, tags):
     """Log a new trade with rationale."""
     settings, _ = _load_config()
     trade_logger = TradeLogger(settings.get("trade_history_file", "data/trade_history.json"))
+    journal_store = _get_journal_store(settings)
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
@@ -250,6 +255,7 @@ def log_trade(ticker, action, shares, price, rationale, tags):
         rationale=rationale,
         tags=tag_list,
     )
+    journal_store.add_trade(trade)
 
     click.secho(
         f"Trade logged: {trade.action} {trade.shares} {trade.ticker} @ ${trade.price:.2f}",
@@ -303,6 +309,76 @@ def history(n, ticker, action):
     click.echo(tabulate(rows, headers=headers, tablefmt="simple"))
 
 
+# ── JOURNAL ───────────────────────────────────────────────────────────────────
+
+@cli.command()
+@click.option("--date", "entry_date", default=None, help="Journal date in YYYY-MM-DD format. Defaults to the latest entry.")
+def journal(entry_date):
+    """Show the recorded daily journal entry."""
+    settings, _ = _load_config()
+    journal_store = _get_journal_store(settings)
+    entries = journal_store.load_all()
+
+    if not entries:
+        click.secho("No journal entries found yet.", fg="yellow")
+        return
+
+    entry = journal_store.get_entry(entry_date) if entry_date else entries[-1]
+    if not entry:
+        click.secho(f"No journal entry found for {entry_date}.", fg="yellow")
+        return
+
+    click.echo(f"\n{'='*60}")
+    click.echo(f"Journal Entry — {entry.entry_date}")
+    click.echo(f"Updated: {entry.updated_at.strftime('%Y-%m-%d %H:%M')}")
+    click.echo(f"{'='*60}")
+
+    if entry.snapshot:
+        snap = entry.snapshot
+        click.echo("Snapshot Summary")
+        click.echo(f"  Total Value: ${snap.total_value:,.2f}")
+        click.echo(f"  Cash:        ${snap.cash:,.2f}")
+        click.echo(f"  Positions:    {snap.positions_count}")
+        if snap.snapshot_path:
+            click.echo(f"  Snapshot:     {snap.snapshot_path}")
+
+    if entry.pnl_summary:
+        pnl = entry.pnl_summary
+        click.echo("\nP&L Summary")
+        click.echo(f"  Realized P&L:   ${pnl.realized_pnl:,.2f}")
+        click.echo(f"  Unrealized P&L: ${pnl.unrealized_pnl:,.2f} ({pnl.unrealized_pnl_pct:+.2f}%)")
+        click.echo(f"  Today's Change: ${pnl.today_change:,.2f} ({pnl.today_change_pct:+.2f}%)")
+        click.echo(f"  Cumulative:     {pnl.cumulative_return_pct:+.2f}%")
+
+    click.echo(f"\nTrades ({len(entry.trades)})")
+    if entry.trades:
+        for trade in entry.trades:
+            click.echo(
+                f"  - {trade.timestamp.strftime('%H:%M')} {trade.action} {trade.shares} "
+                f"{trade.ticker} @ ${trade.price:.2f}"
+            )
+    else:
+        click.echo("  No trades recorded.")
+
+    click.echo(f"\nPrompts ({len(entry.prompts)})")
+    if entry.prompts:
+        for prompt_record in entry.prompts:
+            click.echo(
+                f"  - {prompt_record.created_at.strftime('%H:%M')} [{prompt_record.prompt_type}] "
+                f"{prompt_record.question}"
+            )
+    else:
+        click.echo("  No prompts recorded.")
+
+    click.echo(f"\nDecisions ({len(entry.decisions)})")
+    if entry.decisions:
+        for decision in entry.decisions:
+            label = decision.summary or "Decision recorded"
+            click.echo(f"  - {decision.recorded_at.strftime('%H:%M')} {label}")
+    else:
+        click.echo("  No LLM decisions recorded.")
+
+
 # ── PROMPT ────────────────────────────────────────────────────────────────────
 
 @cli.command()
@@ -317,9 +393,11 @@ def history(n, ticker, action):
 def prompt(prompt_type, question, recent_n, max_tokens, output, snapshot_path):
     """Generate an LLM prompt from the current portfolio state."""
     settings, persistent_ctx = _load_config()
+    journal_store = _get_journal_store(settings)
 
     snapshots_dir = settings.get("snapshots_dir", "data/portfolio_snapshots")
     tracker = PortfolioTracker(snapshots_dir=snapshots_dir)
+    resolved_snapshot_path = snapshot_path
 
     if snapshot_path:
         try:
@@ -332,6 +410,8 @@ def prompt(prompt_type, question, recent_n, max_tokens, output, snapshot_path):
         if not snap:
             click.secho("No snapshots found. Run 'python main.py sync' first.", fg="yellow")
             sys.exit(1)
+        latest_snapshot_path = _get_latest_snapshot_path(tracker)
+        resolved_snapshot_path = str(latest_snapshot_path) if latest_snapshot_path else ""
 
     trade_logger = TradeLogger(settings.get("trade_history_file", "data/trade_history.json"))
     trade_history_obj = TradeHistory(trade_logger)
@@ -348,6 +428,7 @@ def prompt(prompt_type, question, recent_n, max_tokens, output, snapshot_path):
         "What would you like to ask the LLM?",
         default="Analyze my portfolio and recommend trades for this week.",
     )
+    prompt_created_at = datetime.now()
 
     try:
         rendered = generate_prompt(
@@ -374,14 +455,60 @@ def prompt(prompt_type, question, recent_n, max_tokens, output, snapshot_path):
         # Also auto-save to output/prompts/
         output_dir = Path(settings.get("output_dir", "output/prompts"))
         output_dir.mkdir(parents=True, exist_ok=True)
-        auto_file = output_dir / f"prompt_{prompt_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        auto_file = output_dir / f"prompt_{prompt_type}_{prompt_created_at.strftime('%Y%m%d_%H%M%S')}.txt"
         auto_file.write_text(rendered, encoding="utf-8")
+        output_path = auto_file
 
         click.echo("\n" + "=" * 60)
         click.echo(rendered)
         click.echo("=" * 60)
         click.echo(f"\nPrompt length: ~{token_count} tokens")
         click.secho(f"Auto-saved to: {auto_file}", fg="green")
+
+    journal_store.add_prompt(
+        prompt_type=prompt_type,
+        question=user_question,
+        output_path=output_path,
+        snapshot_path=resolved_snapshot_path or "",
+        token_count=token_count,
+        created_at=prompt_created_at,
+    )
+
+
+# ── DECISION LOG ──────────────────────────────────────────────────────────────
+
+@cli.command("record-decision")
+@click.option("--date", "entry_date", default=None, help="Journal date in YYYY-MM-DD format. Defaults to today.")
+@click.option("--prompt-file", default="", help="Prompt file associated with the LLM response.")
+@click.option("--summary", default="", help="Short summary of the decision or recommendation.")
+@click.option("--response-file", default=None, help="Read the LLM response from a text file.")
+@click.option("--response-text", default=None, help="Inline LLM response text.")
+def record_decision(entry_date, prompt_file, summary, response_file, response_text):
+    """Record the LLM response for the daily journal."""
+    settings, _ = _load_config()
+    journal_store = _get_journal_store(settings)
+
+    if response_file:
+        response = Path(response_file).read_text(encoding="utf-8").strip()
+    elif response_text:
+        response = response_text.strip()
+    else:
+        click.echo("Paste the LLM response below. When done, press Ctrl+D (Unix) or Ctrl+Z then Enter (Windows):")
+        response = sys.stdin.read().strip()
+
+    if not response:
+        click.secho("No LLM response provided.", fg="red")
+        sys.exit(1)
+
+    journal_key = entry_date or datetime.now().date().isoformat()
+    entry = journal_store.add_decision(
+        entry_date=journal_key,
+        response_text=response,
+        summary=summary,
+        prompt_output_path=prompt_file,
+    )
+
+    click.secho(f"Decision logged for {entry.entry_date}.", fg="green")
 
 
 if __name__ == "__main__":

@@ -2,31 +2,30 @@
 # Edit this file to customize your investment strategy and constraints
 
 investment_strategy: >
-  Growth-oriented paper trading strategy focused on momentum stocks and
+  Growth-oriented real brokerage strategy focused on momentum stocks and
   sector rotation. Seeking to outperform the S&P 500 benchmark over a
-  6-month horizon using a concentrated portfolio of 5-10 positions.
+  3-month horizon using a portfolio of distributed positions.
 
-risk_tolerance: "Moderate-Aggressive"
+risk_tolerance: "Moderate"
 
-investment_horizon: "6 months"
+investment_horizon: "3 months"
 
 constraints:
-  - "No single position > 35% of portfolio"
-  - "Keep at least 5% cash reserve"
-  - "No leveraged ETFs or options"
-  - "No penny stocks (price < $5)"
-  - "Maximum 3 trades per week"
+  - "No single position > 10% of portfolio"
+  - "Keep 5-15% cash reserve"
+  - "No options"
 
 rules:
   - "Take profits when unrealized gain exceeds 50%"
-  - "Cut losses at -15% from entry"
+  - "Cut losses at -20% from entry"
   - "Always document rationale before entering a trade"
-  - "Review portfolio every Monday morning"
+  - "Review portfolio every evening"
   - "Consider sector concentration before adding new positions"
 
 benchmark: "SPY"
 
 notes: >
-  This is a paper trading account on Investopedia Simulator.
-  All trades are simulated with no real money involved.
-  Use this context to generate disciplined trade recommendations.
+  Use this information to make disciplined decisions for a real brokerage
+  portfolio. Make only recommendations that fit the hard constraints above.
+  If no change is recommended clearly, the default action is to hold the
+  portfolio unchanged for tomorrow.

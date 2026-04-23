@@ -1,14 +1,14 @@
 # Portfolio Tracker
 
-A command-line portfolio tracking and LLM prompt generation tool for either [Investopedia Simulator](https://www.investopedia.com/simulator/) paper trading accounts or exported brokerage positions such as Fidelity CSV files.
+A command-line portfolio tracking and LLM prompt generation tool for Fidelity portfolios imported from exported Fidelity positions CSV files.
 
 ## Features
 
-- **Paste Parser** — copy-paste your Investopedia portfolio page and parse it instantly (no scraping, no API keys)
-- **CSV Import** — load positions from either a simple CSV file or a Fidelity positions export
+- **Fidelity CSV Import** — load positions directly from a Fidelity positions export, including cash rows and fractional shares
 - **Live Quotes** — optionally refresh prices via yfinance
 - **Analytics** — cost basis, unrealized/realized P&L, Sharpe ratio, max drawdown, win rate
 - **Trade Log** — record trades with free-text rationale and tags
+- **Daily Journal** — keep one daily record of snapshots, P&L, prompts, and LLM decisions
 - **LLM Prompt Engine** — generate ready-to-paste prompts for ChatGPT, Claude, etc.
 - **CLI** — all operations via a clean `python main.py` interface
 
@@ -22,32 +22,15 @@ A command-line portfolio tracking and LLM prompt generation tool for either [Inv
 pip install -r requirements.txt
 ```
 
-### 2. Sync your portfolio
+### 2. Sync your Fidelity portfolio
 
-**Option A: Paste from Investopedia**
+Download your Positions CSV from Fidelity, then run:
+
 ```bash
-python main.py sync --paste
-# Paste the text from your Investopedia portfolio page, then Ctrl+D
+python main.py sync --input-file Portfolio_Positions_Apr-22-2026.csv
 ```
 
-**Option B: Load from a text file**
-```bash
-python main.py sync --file --input-file my_portfolio.txt
-```
-
-**Option C: Load from CSV**
-```bash
-python main.py sync --csv --input-file portfolio.csv
-```
-
-Simple CSV format:
-```csv
-ticker,shares,cost_basis,current_price
-BABA,500,114.52,135.38
-DAL,300,49.08,70.22
-```
-
-Fidelity exports are also supported. Use the downloaded positions CSV directly; the loader maps common Fidelity columns such as `Symbol`, `Description`, `Quantity`, `Last Price`, `Current Value`, `Cost Basis`, and `Average Cost Basis`, and preserves fractional shares.
+The Fidelity loader maps columns such as `Symbol`, `Description`, `Quantity`, `Last Price`, `Current Value`, `Today's Gain/Loss`, `Cost Basis Total`, and `Average Cost Basis`. It also preserves fractional shares, recognizes money-market cash rows such as `SPAXX**`, and tolerates Fidelity's trailing empty fields and footer text.
 
 ### 3. View portfolio status
 
@@ -58,32 +41,48 @@ python main.py status
 ### 4. Log a trade
 
 ```bash
-python main.py log-trade -t AAPL -a BUY -s 50 -p 175.00 \
-  -r "Breaking out above 200-day MA on strong volume" \
-  --tags "momentum,tech"
+python main.py log-trade -t NVDA -a BUY -s 5 -p 920.00 \
+  -r "Adding on pullback while keeping semiconductor exposure within limits" \
+  --tags "semis,fidelity"
 ```
 
 ### 5. Generate an LLM prompt
 
 ```bash
 # Trade recommendations prompt (default)
-python main.py prompt --question "Should I trim my airline exposure?"
+python main.py prompt --question "Should I trim my semiconductor exposure?"
 
 # Portfolio review prompt
 python main.py prompt --type review
 
 # Risk check prompt
-python main.py prompt --type risk --question "Am I violating any of my rules?"
+python main.py prompt --type risk --question "Am I violating any of my Fidelity portfolio rules?"
 ```
 
 The generated prompt is printed to the terminal and auto-saved to `output/prompts/`.
+
+### 6. Record the LLM response in your journal
+
+```bash
+python main.py record-decision \
+  --prompt-file output/prompts/tomorrow_trade_prompt.txt \
+  --summary "Trim GLDM and keep tech exposure steady" \
+  --response-file my_llm_response.txt
+```
+
+### 7. Review the daily journal
+
+```bash
+python main.py journal
+python main.py journal --date 2026-04-22
+```
 
 ---
 
 ## Repository Structure
 
 ```
-paper-portfolio/
+portfolio-journal/
 ├── requirements.txt
 ├── main.py                         # CLI entry point
 │
@@ -94,8 +93,8 @@ paper-portfolio/
 ├── src/
 │   ├── data_ingestion/
 │   │   ├── models.py               # Pydantic data models
-│   │   ├── paste_parser.py         # Parse Investopedia copy-paste text
-│   │   ├── csv_loader.py           # Load from CSV
+│   │   ├── paste_parser.py         # Legacy text parser, not part of the Fidelity workflow
+│   │   ├── csv_loader.py           # Load Fidelity positions CSV exports
 │   │   └── market_data.py          # Live quotes via yfinance
 │   │
 │   ├── portfolio/
@@ -115,6 +114,7 @@ paper-portfolio/
 │
 ├── data/
 │   ├── portfolio_snapshots/        # Saved JSON snapshots
+│   ├── journal.json                # Daily journal with snapshots, trades, prompts, decisions
 │   ├── trade_history.json          # Trade log
 │   └── rationale_log.json          # Trade rationale archive
 │
@@ -135,24 +135,31 @@ investment_strategy: "Growth-oriented..."
 risk_tolerance: "Moderate-Aggressive"
 investment_horizon: "6 months"
 constraints:
-  - "No single position > 35% of portfolio"
-  - "Keep at least 5% cash reserve"
+  - "No single position > 10% of portfolio"
+  - "Keep 5-15% cash reserve"
 rules:
-  - "Cut losses at -15%"
+  - "Cut losses at -20%"
   - "Take profits when gain exceeds 50%"
 ```
 
-Edit `config/settings.yaml` to adjust file paths, cache TTL, and token limits.
+Edit `config/settings.yaml` to adjust snapshot, trade history, journal, prompt output, cache TTL, and token limits.
 
 ---
 
-## CLI Reference
+## Fidelity Workflow
+
+This README documents the Fidelity CSV workflow only.
+
+### Export from Fidelity
+
+Download the Positions CSV from Fidelity and point `sync --input-file` at that file.
+
+### CLI Reference
 
 ```bash
-python main.py sync --paste              # Paste portfolio interactively
-python main.py sync --file -i FILE       # Load from .txt file
-python main.py sync --csv -i FILE        # Load from CSV
-python main.py sync --refresh-prices     # Also fetch live quotes
+python main.py sync -i FILE              # Load from a Fidelity positions CSV
+python main.py sync -i FILE --refresh-prices
+                                        # Load from Fidelity CSV and then fetch live quotes
 
 python main.py status                    # Current portfolio table
 python main.py analytics                 # Performance metrics
@@ -166,29 +173,32 @@ python main.py prompt --type review      # Portfolio review prompt
 python main.py prompt --type risk        # Risk check prompt
 python main.py prompt -q "Your question" # Custom question
 python main.py prompt -o my_prompt.txt   # Save to specific file
+
+python main.py record-decision --response-file llm.txt
+                                        # Save the LLM response into the daily journal
+python main.py journal                   # Show the latest journal entry
+python main.py journal --date 2026-04-22
+                                        # Show a specific day
 ```
 
 ---
 
-## How the Paste Parser Works
+## Fidelity CSV Notes
 
-Copy the text from your Investopedia Simulator portfolio page. It looks like:
+The intended input is the downloaded Fidelity positions export. The CSV loader reads the Fidelity headers directly, derives cash from money-market rows, aggregates duplicate symbols across baskets, and keeps Fidelity-specific quirks such as fractional shares and trailing empty columns from breaking the import.
 
-```
-Total Value $133,169.20 Today's Change $0.00(0.00%) Total Gain/Loss $32,357.31(32.10%)
-BABA Alibaba Group Holding Ltd - ADR $135.38 $0.00 (0.00%) $114.52 500 $67,690.00 $10,432.50 (18.22%) Buy More Sell
-DAL Delta Air Lines, Inc. $70.22 $0.00 (0.00%) $49.08 300 $21,066.00 $6,340.71 (43.06%) Buy More Sell
-```
+---
 
-The parser extracts:
-| Field | Example |
-|---|---|
-| Total portfolio value | `$133,169.20` |
-| Today's change | `$0.00 (0.00%)` |
-| Total gain/loss | `$32,357.31 (32.10%)` |
-| Per-position: ticker, company, price, cost basis, shares, market value, P&L | see above |
+## Journal Workflow
 
-Cash is derived automatically: `cash = total_value - sum(market_values)`.
+The app maintains a daily journal in `data/journal.json`.
+
+- `sync` records the latest portfolio snapshot and daily P&L summary
+- `log-trade` appends executed trades to the same day entry
+- `prompt` auto-logs the generated prompt metadata and output path
+- `record-decision` stores the LLM's actual response after you paste or save it
+
+This keeps your portfolio state, executed actions, generated prompts, and LLM recommendations tied to the same trading day.
 
 ---
 

@@ -2,10 +2,11 @@
 models.py - Pydantic data models for the portfolio tracker.
 
 Defines the core data structures used throughout the application:
-- RawPosition / RawPortfolioData  (output of paste/CSV parsers)
+- RawPosition / RawPortfolioData  (output of CSV ingestion)
 - Trade                           (individual trade records)
 - Position                        (enriched with live quotes)
 - PortfolioSnapshot               (point-in-time portfolio state)
+- Journal*                        (daily journal persistence)
 - PersistentContext               (user strategy & constraints)
 """
 
@@ -137,6 +138,74 @@ class PortfolioSnapshot(BaseModel):
     def model_post_init(self, __context) -> None:
         if not self.invested_value:
             self.invested_value = sum(p.market_value for p in self.positions)
+
+
+class JournalSnapshotSummary(BaseModel):
+    """Summary of the latest snapshot attached to a journal entry."""
+
+    snapshot_path: str = ""
+    snapshot_timestamp: datetime
+    total_value: float
+    cash: float = 0.0
+    invested_value: float = 0.0
+    today_change: float = 0.0
+    today_change_pct: float = 0.0
+    total_gain_loss: float = 0.0
+    total_gain_loss_pct: float = 0.0
+    cumulative_return_pct: float = 0.0
+    positions_count: int = 0
+
+
+class JournalPnlSummary(BaseModel):
+    """Daily P&L and risk summary stored in the journal."""
+
+    realized_pnl: float = 0.0
+    unrealized_pnl: float = 0.0
+    unrealized_pnl_pct: float = 0.0
+    total_gain_loss: float = 0.0
+    total_gain_loss_pct: float = 0.0
+    cumulative_return_pct: float = 0.0
+    today_change: float = 0.0
+    today_change_pct: float = 0.0
+    sharpe_ratio: Optional[float] = None
+    max_drawdown_pct: float = 0.0
+    win_rate_pct: float = 0.0
+    avg_win_pct: float = 0.0
+    avg_loss_pct: float = 0.0
+    concentration_top3_pct: float = 0.0
+
+
+class JournalPromptRecord(BaseModel):
+    """Metadata for a generated prompt that is attached to the daily journal."""
+
+    created_at: datetime = Field(default_factory=datetime.now)
+    prompt_type: str = "trade"
+    question: str = ""
+    output_path: str = ""
+    snapshot_path: str = ""
+    token_count: int = 0
+
+
+class JournalDecisionRecord(BaseModel):
+    """Saved LLM response or decision summary attached to the daily journal."""
+
+    recorded_at: datetime = Field(default_factory=datetime.now)
+    prompt_output_path: str = ""
+    summary: str = ""
+    response_text: str = ""
+
+
+class JournalEntry(BaseModel):
+    """One daily journal entry that accumulates portfolio context and actions."""
+
+    entry_date: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    snapshot: Optional[JournalSnapshotSummary] = None
+    pnl_summary: Optional[JournalPnlSummary] = None
+    trades: List[Trade] = Field(default_factory=list)
+    prompts: List[JournalPromptRecord] = Field(default_factory=list)
+    decisions: List[JournalDecisionRecord] = Field(default_factory=list)
 
 
 # ── PERSISTENT CONTEXT MODEL ─────────────────────────────────────────────────

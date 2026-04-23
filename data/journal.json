@@ -1,0 +1,48 @@
+[
+  {
+    "entry_date": "2026-04-22",
+    "created_at": "2026-04-22T19:29:34.222461",
+    "updated_at": "2026-04-22T19:29:37.514542",
+    "snapshot": {
+      "snapshot_path": "data\\portfolio_snapshots\\snapshot_20260422_192934.json",
+      "snapshot_timestamp": "2026-04-22T19:29:34.187729",
+      "total_value": 16058.05,
+      "cash": 3085.2299999999996,
+      "invested_value": 12972.94127,
+      "today_change": 239.73000000000002,
+      "today_change_pct": 1.5155212437224688,
+      "total_gain_loss": 543.26,
+      "total_gain_loss_pct": 4.370726329966139,
+      "cumulative_return_pct": 3.5015620578815465,
+      "positions_count": 34
+    },
+    "pnl_summary": {
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 543.4282100000003,
+      "unrealized_pnl_pct": 4.372079641227717,
+      "total_gain_loss": 543.26,
+      "total_gain_loss_pct": 4.370726329966139,
+      "cumulative_return_pct": 3.5015620578815465,
+      "today_change": 239.73000000000002,
+      "today_change_pct": 1.5155212437224688,
+      "sharpe_ratio": null,
+      "max_drawdown_pct": 0.0,
+      "win_rate_pct": 0.0,
+      "avg_win_pct": 0.0,
+      "avg_loss_pct": 0.0,
+      "concentration_top3_pct": 33.002718325076835
+    },
+    "trades": [],
+    "prompts": [
+      {
+        "created_at": "2026-04-22T19:29:37.479580",
+        "prompt_type": "trade",
+        "question": "Based on this Fidelity portfolio, how should I act tomorrow? Recommend the highest-priority trims, adds, holds, and risk checks for the next trading session.",
+        "output_path": "output\\prompts\\tomorrow_trade_prompt.txt",
+        "snapshot_path": "data\\portfolio_snapshots\\snapshot_20260422_192934.json",
+        "token_count": 871
+      }
+    ],
+    "decisions": []
+  }
+]

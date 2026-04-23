@@ -29,6 +29,14 @@ Brokerage services are provided by Fidelity Brokerage Services LLC (FBS),900 Sal
 Date downloaded Apr-22-2026 9:19 p.m ET,,,,,,,,,,,,,,,
 """
 
+FIDELITY_CSV_WITH_TRAILING_EMPTY_FIELD = """Account Number,Account Name,Basket Name,Symbol,Description,Quantity,Last Price,Last Price Change,Current Value,Today's Gain/Loss Dollar,Today's Gain/Loss Percent,Total Gain/Loss Dollar,Total Gain/Loss Percent,Percent Of Account,Cost Basis Total,Average Cost Basis,Type
+Z25225580,Individual - TOD,,SPAXX**,HELD IN MONEY MARKET,,,,$2069.43,,,,,100.00%,,,Cash,
+Z26679636,Cash Management (Individual - TOD),Tech,AAPL,APPLE INC,2.543,$273.17,+$7.00,$694.67,+$17.80,+2.62%,+$23.62,+3.52%,4.96%,$671.05,$263.88,Cash,
+Z26679636,Cash Management (Individual - TOD),Tech,GOOG,ALPHABET INC CAP STK CL C,2.016,$337.73,+$7.26,$680.86,+$14.63,+2.19%,+$34.74,+5.37%,4.86%,$646.12,$320.50,Cash,
+
+"The data and information in this spreadsheet is provided to you solely for your use and is not for distribution."
+"""
+
 CSV_MISSING_COLUMN = """ticker,shares,current_price
 AAPL,100,175.00
 """
@@ -153,5 +161,21 @@ class TestCSVLoader:
             assert smh.cost_basis_per_share == pytest.approx(
                 (295.07 + 131.39) / 1.064
             )
+        finally:
+            os.unlink(path)
+
+    def test_fidelity_loader_handles_trailing_empty_field_rows(self):
+        path = self._write_temp_csv(FIDELITY_CSV_WITH_TRAILING_EMPTY_FIELD)
+        try:
+            result = self.loader.load(path)
+            tickers = [position.ticker for position in result.positions]
+
+            assert tickers == ["AAPL", "GOOG"]
+            assert result.cash == pytest.approx(2069.43)
+
+            aapl = next(p for p in result.positions if p.ticker == "AAPL")
+            assert aapl.company_name == "APPLE INC"
+            assert aapl.shares == pytest.approx(2.543)
+            assert aapl.current_price == pytest.approx(273.17)
         finally:
             os.unlink(path)
