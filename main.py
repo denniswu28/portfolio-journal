@@ -1,5 +1,5 @@
 """
-main.py - CLI entry point for the Investopedia Portfolio Tracker.
+main.py - CLI entry point for the portfolio tracker.
 
 Commands:
   sync --paste          Paste portfolio text interactively
@@ -52,7 +52,7 @@ def _load_config():
 
 @click.group()
 def cli():
-    """Investopedia Portfolio Tracker — parse, analyse, and generate LLM prompts."""
+    """Portfolio Tracker — sync holdings, analyse them, and generate LLM prompts."""
 
 
 # ── SYNC ─────────────────────────────────────────────────────────────────────
@@ -228,7 +228,7 @@ def analytics():
 @cli.command("log-trade")
 @click.option("--ticker", "-t", required=True, help="Ticker symbol (e.g. AAPL).")
 @click.option("--action", "-a", required=True, type=click.Choice(["BUY", "SELL"], case_sensitive=False), help="BUY or SELL.")
-@click.option("--shares", "-s", required=True, type=int, help="Number of shares.")
+@click.option("--shares", "-s", required=True, type=float, help="Number of shares.")
 @click.option("--price", "-p", required=True, type=float, help="Execution price per share.")
 @click.option("--rationale", "-r", default="", help="Reason for the trade.")
 @click.option("--tags", default="", help="Comma-separated tags (e.g. 'momentum,earnings').")

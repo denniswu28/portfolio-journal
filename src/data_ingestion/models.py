@@ -28,7 +28,7 @@ class RawPosition(BaseModel):
     day_change: float = 0.0
     day_change_pct: float = 0.0
     cost_basis_per_share: float
-    shares: int
+    shares: float
     market_value: float
     gain_loss: float = 0.0
     gain_loss_pct: float = 0.0
@@ -60,7 +60,7 @@ class Trade(BaseModel):
     id: str = ""
     ticker: str
     action: str  # "BUY" or "SELL"
-    shares: int
+    shares: float
     price: float
     total_value: float = 0.0
     rationale: str = ""
@@ -97,7 +97,7 @@ class Position(BaseModel):
 
     ticker: str
     company_name: str
-    shares: int
+    shares: float
     avg_cost_basis: float
     current_price: float
     market_value: float = 0.0

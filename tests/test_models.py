@@ -38,6 +38,17 @@ class TestRawPosition:
         assert pos.day_change_pct == 0.0
         assert pos.gain_loss == 0.0
 
+    def test_fractional_shares_supported(self):
+        pos = RawPosition(
+            ticker="AAPL",
+            company_name="Apple",
+            current_price=150.0,
+            cost_basis_per_share=100.0,
+            shares=2.543,
+            market_value=381.45,
+        )
+        assert pos.shares == pytest.approx(2.543)
+
 
 class TestTrade:
     def test_action_normalized_to_uppercase(self):
@@ -57,6 +68,10 @@ class TestTrade:
         assert trade.id != ""
         assert "AAPL" in trade.id
         assert "BUY" in trade.id
+
+    def test_fractional_trade_shares_supported(self):
+        trade = Trade(ticker="AAPL", action="BUY", shares=0.5, price=150.0)
+        assert trade.total_value == pytest.approx(75.0)
 
 
 class TestPosition:

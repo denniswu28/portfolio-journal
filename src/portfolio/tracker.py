@@ -179,7 +179,7 @@ def _compute_avg_cost(trades: List[Trade], ticker: str) -> float:
 
     Returns 0.0 if there are no BUY trades for this ticker.
     """
-    total_shares = 0
+    total_shares = 0.0
     total_cost = 0.0
 
     for trade in sorted(trades, key=lambda t: t.timestamp):

@@ -1,11 +1,11 @@
-# Paper Portfolio Tracker
+# Portfolio Tracker
 
-A command-line portfolio tracking and LLM prompt generation tool for [Investopedia Simulator](https://www.investopedia.com/simulator/) paper trading accounts.
+A command-line portfolio tracking and LLM prompt generation tool for either [Investopedia Simulator](https://www.investopedia.com/simulator/) paper trading accounts or exported brokerage positions such as Fidelity CSV files.
 
 ## Features
 
 - **Paste Parser** — copy-paste your Investopedia portfolio page and parse it instantly (no scraping, no API keys)
-- **CSV Fallback** — load positions from a simple CSV file
+- **CSV Import** — load positions from either a simple CSV file or a Fidelity positions export
 - **Live Quotes** — optionally refresh prices via yfinance
 - **Analytics** — cost basis, unrealized/realized P&L, Sharpe ratio, max drawdown, win rate
 - **Trade Log** — record trades with free-text rationale and tags
@@ -40,12 +40,14 @@ python main.py sync --file --input-file my_portfolio.txt
 python main.py sync --csv --input-file portfolio.csv
 ```
 
-CSV format:
+Simple CSV format:
 ```csv
 ticker,shares,cost_basis,current_price
 BABA,500,114.52,135.38
 DAL,300,49.08,70.22
 ```
+
+Fidelity exports are also supported. Use the downloaded positions CSV directly; the loader maps common Fidelity columns such as `Symbol`, `Description`, `Quantity`, `Last Price`, `Current Value`, `Cost Basis`, and `Average Cost Basis`, and preserves fractional shares.
 
 ### 3. View portfolio status
 

@@ -20,8 +20,7 @@ from src.data_ingestion.models import PerformanceMetrics, PortfolioSnapshot, Tra
 # ── TEMPLATES ──────────────────────────────────────────────────────────────────
 
 TRADE_INSTRUCTIONS_TEMPLATE = """
-You are a portfolio management assistant for a paper trading account
-on Investopedia Simulator.
+You are a portfolio management assistant for a real brokerage portfolio.
 
 ## Your Mandate
 {{ strategy }}
@@ -76,11 +75,11 @@ Respond with:
 5. Key risks to monitor
 
 Do NOT violate the hard constraints listed above.
-Format recommendations as executable Investopedia Simulator instructions.
+Format recommendations as clear, executable brokerage trade instructions.
 """.strip()
 
 REVIEW_TEMPLATE = """
-You are a portfolio analyst reviewing a paper trading account on Investopedia Simulator.
+You are a portfolio analyst reviewing a real brokerage portfolio.
 
 ## Investor Profile
 Strategy: {{ strategy }}
@@ -120,7 +119,7 @@ Please provide:
 """.strip()
 
 RISK_CHECK_TEMPLATE = """
-You are a risk manager reviewing a paper trading portfolio on Investopedia Simulator.
+You are a risk manager reviewing a real brokerage portfolio.
 
 ## Portfolio ({{ timestamp }})
 Total Value: ${{ "%.2f"|format(total_value) }}

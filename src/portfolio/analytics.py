@@ -31,7 +31,7 @@ def calculate_avg_cost_basis(trades: List[Trade], ticker: str) -> float:
     Returns:
         Average cost per share, or 0.0 if no BUY trades found.
     """
-    total_shares = 0
+    total_shares = 0.0
     total_cost = 0.0
 
     for trade in sorted(trades, key=lambda t: t.timestamp):
@@ -81,7 +81,7 @@ def realized_pnl(trades: List[Trade]) -> float:
     """
     # Group BUY trades per ticker to track running avg cost
     avg_costs: Dict[str, float] = {}
-    shares_held: Dict[str, int] = {}
+    shares_held: Dict[str, float] = {}
     total_realized = 0.0
 
     for trade in sorted(trades, key=lambda t: t.timestamp):
@@ -246,7 +246,7 @@ def _compute_trade_stats(
         (win_rate_pct, avg_win_pct, avg_loss_pct, winning_count, losing_count)
     """
     avg_costs: Dict[str, float] = {}
-    shares_held: Dict[str, int] = {}
+    shares_held: Dict[str, float] = {}
     wins: List[float] = []
     losses: List[float] = []
 
