@@ -26,9 +26,11 @@ from tabulate import tabulate
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data_ingestion.csv_loader import CSVLoader
+from src.data_ingestion.market_data import get_historical_returns
 from src.data_ingestion.models import PersistentContext
 from src.data_ingestion.paste_parser import PasteParser
 from src.portfolio.analytics import compute_metrics
+from src.portfolio.reporting import build_report, save_report
 from src.portfolio.tracker import PortfolioTracker
 from src.prompt_engine.formatter import estimate_tokens, truncate_to_budget
 from src.prompt_engine.prompt_builder import generate_prompt
@@ -122,6 +124,24 @@ def sync(mode, input_file, cash, refresh_prices, save):
         path = tracker.save_snapshot(snapshot)
         click.secho(f"Snapshot saved: {path}", fg="green")
 
+        # Record metrics on this snapshot if enough history exists
+        snapshot_files = tracker.list_snapshots()
+        if len(snapshot_files) >= 2:
+            all_snaps = [tracker.load_snapshot(f) for f in snapshot_files]
+            _, ctx = _load_config()
+            bench = ctx.benchmark or "SPY"
+            snap_dates = [s.timestamp.date() for s in all_snaps]
+            bench_returns = get_historical_returns(bench, snap_dates)
+            metrics = compute_metrics(
+                all_snaps,
+                trades,
+                benchmark_returns=bench_returns,
+                benchmark_ticker=bench,
+            )
+            # Attach metrics to the just-saved snapshot and re-save
+            snapshot.recorded_metrics = metrics
+            tracker.save_snapshot(snapshot, path=str(path))
+
     # Show brief summary
     click.echo(f"\nPortfolio Value: ${snapshot.total_portfolio_value:,.2f}")
     click.echo(f"Cash:            ${snapshot.cash:,.2f}")
@@ -183,9 +203,10 @@ def status(snapshot_path):
 # ── ANALYTICS ─────────────────────────────────────────────────────────────────
 
 @cli.command()
-def analytics():
-    """Show portfolio performance metrics across all saved snapshots."""
-    settings, _ = _load_config()
+@click.option("--output", "-o", default=None, help="Override path for saved report file.")
+def analytics(output):
+    """Show portfolio performance metrics and save a markdown report."""
+    settings, ctx = _load_config()
     snapshots_dir = settings.get("snapshots_dir", "data/portfolio_snapshots")
     tracker = PortfolioTracker(snapshots_dir=snapshots_dir)
 
@@ -206,21 +227,45 @@ def analytics():
     trade_logger = TradeLogger(settings.get("trade_history_file", "data/trade_history.json"))
     trades = trade_logger.load_all()
 
-    metrics = compute_metrics(snapshots, trades)
+    bench = ctx.benchmark or "SPY"
+    snap_dates = [s.timestamp.date() for s in snapshots]
+    click.echo(f"Fetching {bench} benchmark history…")
+    bench_returns = get_historical_returns(bench, snap_dates)
+    if bench_returns is None:
+        click.secho(
+            f"  Warning: could not fetch {bench} history — alpha/beta will be N/A.",
+            fg="yellow",
+        )
 
-    click.echo(f"\n{'='*50}")
-    click.echo("Performance Metrics")
-    click.echo(f"{'='*50}")
-    click.echo(f"Cumulative Return:   {metrics.cumulative_return_pct:>+10.2f}%")
-    click.echo(f"Sharpe Ratio:        {metrics.sharpe_ratio if metrics.sharpe_ratio is not None else 'N/A':>10}")
-    click.echo(f"Max Drawdown:        {metrics.max_drawdown_pct:>10.2f}%")
-    click.echo(f"Win Rate:            {metrics.win_rate_pct:>10.1f}%")
-    click.echo(f"Avg Win:             {metrics.avg_win_pct:>+10.2f}%")
-    click.echo(f"Avg Loss:            {metrics.avg_loss_pct:>+10.2f}%")
-    click.echo(f"Top-3 Concentration: {metrics.concentration_top3_pct:>10.1f}%")
-    click.echo(f"Total Trades:        {metrics.total_trades:>10}")
-    click.echo(f"  Winning:           {metrics.winning_trades:>10}")
-    click.echo(f"  Losing:            {metrics.losing_trades:>10}")
+    metrics = compute_metrics(
+        snapshots,
+        trades,
+        benchmark_returns=bench_returns,
+        benchmark_ticker=bench,
+    )
+
+    latest_snap = snapshots[-1]
+    report_text = build_report(latest_snap, metrics, as_markdown=True)
+
+    # ── Print to terminal (plain-text version) ────────────────────────────────
+    plain = build_report(latest_snap, metrics, as_markdown=False)
+    click.echo(plain)
+
+    # ── Save markdown report ──────────────────────────────────────────────────
+    reports_dir = settings.get("reports_dir", "output/reports")
+    if output:
+        from pathlib import Path as _Path
+        p = _Path(output)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(report_text, encoding="utf-8")
+        saved_path = p
+    else:
+        saved_path = save_report(
+            report_text,
+            reports_dir=reports_dir,
+            as_of=latest_snap.timestamp,
+        )
+    click.secho(f"\nReport saved: {saved_path}", fg="green")
 
 
 # ── LOG TRADE ─────────────────────────────────────────────────────────────────

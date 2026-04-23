@@ -7,7 +7,9 @@ A command-line portfolio tracking and LLM prompt generation tool for [Investoped
 - **Paste Parser** — copy-paste your Investopedia portfolio page and parse it instantly (no scraping, no API keys)
 - **CSV Fallback** — load positions from a simple CSV file
 - **Live Quotes** — optionally refresh prices via yfinance
-- **Analytics** — cost basis, unrealized/realized P&L, Sharpe ratio, max drawdown, win rate
+- **Analytics** — cost basis, unrealized/realized P&L, Sharpe ratio, alpha vs SPY, beta vs SPY, current & max drawdown, win rate
+- **Benchmark Reporting** — automatically fetches SPY history and computes alpha/beta via OLS regression; alpha and beta are recorded on each snapshot as-of-date
+- **Saved Reports** — `analytics` prints a performance summary and writes a markdown report to `output/reports/`
 - **Trade Log** — record trades with free-text rationale and tags
 - **LLM Prompt Engine** — generate ready-to-paste prompts for ChatGPT, Claude, etc.
 - **CLI** — all operations via a clean `python main.py` interface
@@ -61,7 +63,17 @@ python main.py log-trade -t AAPL -a BUY -s 50 -p 175.00 \
   --tags "momentum,tech"
 ```
 
-### 5. Generate an LLM prompt
+### 5. View performance analytics
+
+```bash
+python main.py analytics
+```
+
+Fetches SPY history for the snapshot window, computes Sharpe ratio, alpha vs SPY, beta vs SPY, current and max drawdown, then prints a full report and saves it to `output/reports/report_<timestamp>.md`.
+
+Alpha and beta are calculated via OLS regression of your portfolio's interval returns against SPY's aligned interval returns.  When fewer than 3 intervals are available the report notes "N/A (insufficient history)" rather than printing misleading values.
+
+### 6. Generate an LLM prompt
 
 ```bash
 # Trade recommendations prompt (default)
@@ -98,7 +110,8 @@ paper-portfolio/
 │   │
 │   ├── portfolio/
 │   │   ├── tracker.py              # Build enriched PortfolioSnapshot
-│   │   └── analytics.py            # Cost basis, P&L, performance metrics
+│   │   ├── analytics.py            # Cost basis, P&L, Sharpe, alpha, beta, drawdown
+│   │   └── reporting.py            # Report renderer (CLI + markdown file)
 │   │
 │   ├── trade_log/
 │   │   ├── logger.py               # Record trades to JSON
@@ -117,7 +130,8 @@ paper-portfolio/
 │   └── rationale_log.json          # Trade rationale archive
 │
 ├── output/
-│   └── prompts/                    # Auto-saved prompt files
+│   ├── prompts/                    # Auto-saved prompt files
+│   └── reports/                    # Auto-saved analytics reports (markdown)
 │
 └── tests/                          # pytest test suite
 ```
@@ -153,7 +167,8 @@ python main.py sync --csv -i FILE        # Load from CSV
 python main.py sync --refresh-prices     # Also fetch live quotes
 
 python main.py status                    # Current portfolio table
-python main.py analytics                 # Performance metrics
+python main.py analytics                 # Performance metrics + saved report
+python main.py analytics -o FILE         # Save report to a custom path
 
 python main.py log-trade -t TICKER -a BUY -s SHARES -p PRICE -r "Rationale"
 python main.py history                   # Recent trades

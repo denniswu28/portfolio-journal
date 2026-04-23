@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime
 
 from src.data_ingestion.models import (
+    PerformanceMetrics,
     PersistentContext,
     PortfolioSnapshot,
     Position,
@@ -113,3 +114,56 @@ class TestPersistentContext:
         )
         assert ctx.risk_tolerance == "Aggressive"
         assert "No options" in ctx.constraints
+
+
+class TestPerformanceMetrics:
+    def test_defaults(self):
+        m = PerformanceMetrics()
+        assert m.cumulative_return_pct == 0.0
+        assert m.sharpe_ratio is None
+        assert m.alpha_annualized_pct is None
+        assert m.beta is None
+        assert m.benchmark_ticker == "SPY"
+        assert m.benchmark_cumulative_return_pct is None
+        assert m.max_drawdown_date is None
+        assert m.current_drawdown_pct == 0.0
+
+    def test_benchmark_fields_set(self):
+        m = PerformanceMetrics(
+            benchmark_ticker="SPY",
+            benchmark_cumulative_return_pct=5.0,
+            alpha_annualized_pct=2.3,
+            beta=0.85,
+        )
+        assert m.benchmark_ticker == "SPY"
+        assert m.benchmark_cumulative_return_pct == pytest.approx(5.0)
+        assert m.alpha_annualized_pct == pytest.approx(2.3)
+        assert m.beta == pytest.approx(0.85)
+
+    def test_drawdown_fields_set(self):
+        m = PerformanceMetrics(
+            max_drawdown_pct=12.5,
+            max_drawdown_date="2024-03-15",
+            current_drawdown_pct=4.2,
+        )
+        assert m.max_drawdown_pct == pytest.approx(12.5)
+        assert m.max_drawdown_date == "2024-03-15"
+        assert m.current_drawdown_pct == pytest.approx(4.2)
+
+    def test_snapshot_records_metrics(self):
+        m = PerformanceMetrics(cumulative_return_pct=7.5, sharpe_ratio=1.2)
+        snap = PortfolioSnapshot(total_portfolio_value=100000.0, recorded_metrics=m)
+        assert snap.recorded_metrics is not None
+        assert snap.recorded_metrics.cumulative_return_pct == pytest.approx(7.5)
+
+    def test_snapshot_recorded_metrics_none_by_default(self):
+        snap = PortfolioSnapshot(total_portfolio_value=100000.0)
+        assert snap.recorded_metrics is None
+
+    def test_snapshot_round_trips_with_recorded_metrics(self):
+        m = PerformanceMetrics(beta=1.1, alpha_annualized_pct=3.0)
+        snap = PortfolioSnapshot(total_portfolio_value=50000.0, recorded_metrics=m)
+        dumped = snap.model_dump_json()
+        reloaded = PortfolioSnapshot.model_validate_json(dumped)
+        assert reloaded.recorded_metrics is not None
+        assert reloaded.recorded_metrics.beta == pytest.approx(1.1)

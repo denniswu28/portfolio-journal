@@ -133,6 +133,7 @@ class PortfolioSnapshot(BaseModel):
     total_gain_loss_pct: float = 0.0
     cumulative_return_pct: float = 0.0
     positions: List[Position] = Field(default_factory=list)
+    recorded_metrics: Optional["PerformanceMetrics"] = None
 
     def model_post_init(self, __context) -> None:
         if not self.invested_value:
@@ -162,6 +163,8 @@ class PerformanceMetrics(BaseModel):
     daily_returns: List[float] = Field(default_factory=list)
     sharpe_ratio: Optional[float] = None
     max_drawdown_pct: float = 0.0
+    max_drawdown_date: Optional[str] = None
+    current_drawdown_pct: float = 0.0
     win_rate_pct: float = 0.0
     avg_win_pct: float = 0.0
     avg_loss_pct: float = 0.0
@@ -169,3 +172,8 @@ class PerformanceMetrics(BaseModel):
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
+    # Benchmark-relative fields (populated when benchmark history is available)
+    benchmark_ticker: str = "SPY"
+    benchmark_cumulative_return_pct: Optional[float] = None
+    alpha_annualized_pct: Optional[float] = None
+    beta: Optional[float] = None

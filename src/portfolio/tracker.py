@@ -131,18 +131,24 @@ class PortfolioTracker:
         )
         return snapshot
 
-    def save_snapshot(self, snapshot: PortfolioSnapshot) -> Path:
+    def save_snapshot(self, snapshot: PortfolioSnapshot, path: Optional[str | Path] = None) -> Path:
         """
         Save a snapshot to disk as a JSON file.
 
         Args:
             snapshot: The PortfolioSnapshot to save.
+            path:     Optional explicit file path.  If given, the file is
+                      written to that path (overwriting if it exists).
+                      If omitted, a timestamped filename is generated.
 
         Returns:
             Path to the saved file.
         """
-        filename = snapshot.timestamp.strftime("snapshot_%Y%m%d_%H%M%S.json")
-        filepath = self.snapshots_dir / filename
+        if path is not None:
+            filepath = Path(path)
+        else:
+            filename = snapshot.timestamp.strftime("snapshot_%Y%m%d_%H%M%S.json")
+            filepath = self.snapshots_dir / filename
         with open(filepath, "w", encoding="utf-8") as fh:
             fh.write(snapshot.model_dump_json(indent=2))
         return filepath
