@@ -12,7 +12,7 @@ Defines the core data structures used throughout the application:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -51,6 +51,70 @@ class RawPortfolioData(BaseModel):
     total_gain_loss_pct: float = 0.0
     positions: List[RawPosition] = Field(default_factory=list)
     parsed_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── FIDELITY ANALYSIS MODELS ────────────────────────────────────────────────
+
+class AssetAllocationRow(BaseModel):
+    """One Fidelity asset-allocation row for a symbol and asset class."""
+
+    symbol: str
+    description: str = ""
+    account: str = ""
+    asset_class: str
+    weight_pct: float = 0.0
+    current_value: float = 0.0
+
+
+class GeographicExposureRow(BaseModel):
+    """One Fidelity geographic-exposure row for a symbol."""
+
+    symbol: str
+    description: str = ""
+    account: str = ""
+    region: str
+    country: str
+    weight_pct: float = 0.0
+    current_value: float = 0.0
+
+
+class StyleExposureRow(BaseModel):
+    """One Fidelity style-box row for a symbol."""
+
+    symbol: str
+    description: str = ""
+    account: str = ""
+    style: str
+    weight_pct: float = 0.0
+    current_value: float = 0.0
+
+
+class PeriodicReturnRow(BaseModel):
+    """One Fidelity account-level periodic return row."""
+
+    period_end_date: date
+    return_type: str
+    account: str
+    one_month_pct: Optional[float] = None
+    three_month_pct: Optional[float] = None
+    ytd_pct: Optional[float] = None
+    one_year_pct: Optional[float] = None
+    three_year_pct: Optional[float] = None
+    five_year_pct: Optional[float] = None
+    ten_year_pct: Optional[float] = None
+    life_pct: Optional[float] = None
+    life_start_date: Optional[date] = None
+
+
+class FidelityAnalysisBundle(BaseModel):
+    """Supplemental Fidelity analysis data for a dated export folder."""
+
+    as_of_date: date
+    source_dir: str = ""
+    asset_allocation: List[AssetAllocationRow] = Field(default_factory=list)
+    geographic_exposure: List[GeographicExposureRow] = Field(default_factory=list)
+    style_exposure: List[StyleExposureRow] = Field(default_factory=list)
+    periodic_returns: List[PeriodicReturnRow] = Field(default_factory=list)
 
 
 # ── TRADE MODELS ─────────────────────────────────────────────────────────────
@@ -134,6 +198,7 @@ class PortfolioSnapshot(BaseModel):
     total_gain_loss_pct: float = 0.0
     cumulative_return_pct: float = 0.0
     positions: List[Position] = Field(default_factory=list)
+    fidelity_analysis: Optional[FidelityAnalysisBundle] = None
 
     def model_post_init(self, __context) -> None:
         if not self.invested_value:
@@ -175,6 +240,19 @@ class JournalPnlSummary(BaseModel):
     concentration_top3_pct: float = 0.0
 
 
+class JournalExposureSummary(BaseModel):
+    """Compact Fidelity exposure context stored in the daily journal."""
+
+    source_dir: str = ""
+    top_asset_classes: List[str] = Field(default_factory=list)
+    top_regions: List[str] = Field(default_factory=list)
+    top_countries: List[str] = Field(default_factory=list)
+    top_styles: List[str] = Field(default_factory=list)
+    fidelity_period_end: Optional[date] = None
+    fidelity_twr_ytd_pct: Optional[float] = None
+    fidelity_twr_life_pct: Optional[float] = None
+
+
 class JournalPromptRecord(BaseModel):
     """Metadata for a generated prompt that is attached to the daily journal."""
 
@@ -203,6 +281,7 @@ class JournalEntry(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
     snapshot: Optional[JournalSnapshotSummary] = None
     pnl_summary: Optional[JournalPnlSummary] = None
+    exposure_summary: Optional[JournalExposureSummary] = None
     trades: List[Trade] = Field(default_factory=list)
     prompts: List[JournalPromptRecord] = Field(default_factory=list)
     decisions: List[JournalDecisionRecord] = Field(default_factory=list)
@@ -228,9 +307,16 @@ class PerformanceMetrics(BaseModel):
     """Computed performance metrics for the portfolio."""
 
     cumulative_return_pct: float = 0.0
+    annualized_return_pct: float = 0.0
+    annualized_volatility_pct: float = 0.0
     daily_returns: List[float] = Field(default_factory=list)
     sharpe_ratio: Optional[float] = None
+    calmar_ratio: Optional[float] = None
     max_drawdown_pct: float = 0.0
+    max_drawdown_start: Optional[datetime] = None
+    max_drawdown_end: Optional[datetime] = None
+    max_drawdown_peak_value: float = 0.0
+    max_drawdown_trough_value: float = 0.0
     win_rate_pct: float = 0.0
     avg_win_pct: float = 0.0
     avg_loss_pct: float = 0.0

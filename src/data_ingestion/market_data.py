@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 from typing import Dict, List, Optional
 
+import pandas as pd
 import yfinance as yf
 
 
@@ -137,6 +138,67 @@ def get_ticker_info(ticker: str) -> Dict:
         }
     except Exception:
         return {"ticker": ticker.upper(), "name": ticker}
+
+
+def get_price_history(
+    tickers: List[str],
+    period: str = "3y",
+    interval: str = "1wk",
+) -> pd.DataFrame:
+    """
+    Fetch adjusted close price history for multiple tickers.
+
+    Args:
+        tickers: List of ticker symbols.
+        period: yfinance history period, for example "3y".
+        interval: yfinance interval, for example "1d", "1wk", or "1mo".
+
+    Returns:
+        DataFrame indexed by date with uppercase ticker columns.
+    """
+    unique_tickers = []
+    for ticker in tickers:
+        normalized = ticker.upper().strip()
+        if normalized and normalized not in unique_tickers:
+            unique_tickers.append(normalized)
+    if not unique_tickers:
+        return pd.DataFrame()
+
+    try:
+        data = yf.download(
+            unique_tickers,
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+            threads=True,
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    if data.empty:
+        return pd.DataFrame()
+
+    if isinstance(data.columns, pd.MultiIndex):
+        first_level = data.columns.get_level_values(0)
+        if "Close" in first_level:
+            close_data = data["Close"]
+        elif "Adj Close" in first_level:
+            close_data = data["Adj Close"]
+        else:
+            return pd.DataFrame()
+    elif "Close" in data.columns:
+        close_data = data[["Close"]].rename(columns={"Close": unique_tickers[0]})
+    elif "Adj Close" in data.columns:
+        close_data = data[["Adj Close"]].rename(columns={"Adj Close": unique_tickers[0]})
+    else:
+        close_data = data
+
+    if isinstance(close_data, pd.Series):
+        close_data = close_data.to_frame(name=unique_tickers[0])
+    close_data = close_data.rename(columns=lambda column: str(column).upper().strip())
+    ordered_columns = [ticker for ticker in unique_tickers if ticker in close_data.columns]
+    return close_data.loc[:, ordered_columns].dropna(how="all")
 
 
 def clear_cache() -> None:

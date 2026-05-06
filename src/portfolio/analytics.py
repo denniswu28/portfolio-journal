@@ -10,6 +10,7 @@ Sections:
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from src.data_ingestion.models import PerformanceMetrics, PortfolioSnapshot, Position, Trade
@@ -159,6 +160,7 @@ def compute_metrics(
     if not snapshots:
         return PerformanceMetrics()
 
+    snapshots = sorted(snapshots, key=lambda s: s.timestamp)
     values = [s.total_portfolio_value for s in snapshots]
 
     # Cumulative return
@@ -174,9 +176,18 @@ def compute_metrics(
 
     # Sharpe ratio (annualized, assuming daily snapshots)
     sharpe_ratio = _compute_sharpe(daily_returns, risk_free_rate)
+    annualized_return_pct = _compute_annualized_return(snapshots)
+    annualized_volatility_pct = _compute_annualized_volatility(daily_returns)
 
     # Max drawdown
-    max_drawdown_pct = _compute_max_drawdown(values)
+    (
+        max_drawdown_pct,
+        max_drawdown_start,
+        max_drawdown_end,
+        max_drawdown_peak_value,
+        max_drawdown_trough_value,
+    ) = _compute_max_drawdown_details(snapshots)
+    calmar_ratio = _compute_calmar_ratio(annualized_return_pct, max_drawdown_pct)
 
     # Win/loss stats from trade history
     win_rate_pct, avg_win_pct, avg_loss_pct, winning, losing = _compute_trade_stats(
@@ -188,9 +199,16 @@ def compute_metrics(
 
     return PerformanceMetrics(
         cumulative_return_pct=cumulative_return_pct,
+        annualized_return_pct=annualized_return_pct,
+        annualized_volatility_pct=annualized_volatility_pct,
         daily_returns=daily_returns,
         sharpe_ratio=sharpe_ratio,
+        calmar_ratio=calmar_ratio,
         max_drawdown_pct=max_drawdown_pct,
+        max_drawdown_start=max_drawdown_start,
+        max_drawdown_end=max_drawdown_end,
+        max_drawdown_peak_value=max_drawdown_peak_value,
+        max_drawdown_trough_value=max_drawdown_trough_value,
         win_rate_pct=win_rate_pct,
         avg_win_pct=avg_win_pct,
         avg_loss_pct=avg_loss_pct,
@@ -221,6 +239,49 @@ def _compute_sharpe(
     return round(sharpe, 4)
 
 
+def _compute_annualized_return(snapshots: List[PortfolioSnapshot]) -> float:
+    """Annualized return/CAGR from first to last snapshot."""
+    if len(snapshots) < 2:
+        return 0.0
+    start_value = snapshots[0].total_portfolio_value
+    end_value = snapshots[-1].total_portfolio_value
+    if start_value <= 0 or end_value <= 0:
+        return 0.0
+    years = _elapsed_years(snapshots[0].timestamp, snapshots[-1].timestamp, len(snapshots))
+    if years <= 0:
+        return 0.0
+    annualized = ((end_value / start_value) ** (1 / years) - 1) * 100
+    return round(annualized, 4)
+
+
+def _compute_annualized_volatility(daily_returns: List[float]) -> float:
+    """Annualized volatility from period returns expressed as percentages."""
+    if len(daily_returns) < 2:
+        return 0.0
+    n = len(daily_returns)
+    mean_r = sum(daily_returns) / n
+    variance = sum((r - mean_r) ** 2 for r in daily_returns) / (n - 1)
+    std_dev = math.sqrt(variance) if variance > 0 else 0.0
+    return round(std_dev * math.sqrt(252), 4)
+
+
+def _compute_calmar_ratio(
+    annualized_return_pct: float, max_drawdown_pct: float
+) -> Optional[float]:
+    """Calmar ratio: annualized return divided by absolute max drawdown."""
+    if max_drawdown_pct <= 0:
+        return None
+    return round(annualized_return_pct / max_drawdown_pct, 4)
+
+
+def _elapsed_years(start: datetime, end: datetime, snapshot_count: int) -> float:
+    """Return elapsed years, falling back to daily periods for same-time snapshots."""
+    elapsed_days = (end - start).total_seconds() / 86400
+    if elapsed_days > 0:
+        return elapsed_days / 365.25
+    return max(snapshot_count - 1, 0) / 252
+
+
 def _compute_max_drawdown(values: List[float]) -> float:
     """Maximum peak-to-trough drawdown as a positive percentage."""
     if not values:
@@ -234,6 +295,42 @@ def _compute_max_drawdown(values: List[float]) -> float:
         if dd > max_dd:
             max_dd = dd
     return round(max_dd, 4)
+
+
+def _compute_max_drawdown_details(
+    snapshots: List[PortfolioSnapshot],
+) -> Tuple[float, Optional[datetime], Optional[datetime], float, float]:
+    """Maximum drawdown with peak/trough timestamps and values."""
+    if not snapshots:
+        return 0.0, None, None, 0.0, 0.0
+
+    peak_snapshot = snapshots[0]
+    max_drawdown_pct = 0.0
+    max_drawdown_start: Optional[datetime] = None
+    max_drawdown_end: Optional[datetime] = None
+    max_drawdown_peak_value = snapshots[0].total_portfolio_value
+    max_drawdown_trough_value = snapshots[0].total_portfolio_value
+
+    for snapshot in snapshots:
+        value = snapshot.total_portfolio_value
+        if value > peak_snapshot.total_portfolio_value:
+            peak_snapshot = snapshot
+        peak_value = peak_snapshot.total_portfolio_value
+        drawdown_pct = (peak_value - value) / peak_value * 100 if peak_value else 0.0
+        if drawdown_pct > max_drawdown_pct:
+            max_drawdown_pct = drawdown_pct
+            max_drawdown_start = peak_snapshot.timestamp
+            max_drawdown_end = snapshot.timestamp
+            max_drawdown_peak_value = peak_value
+            max_drawdown_trough_value = value
+
+    return (
+        round(max_drawdown_pct, 4),
+        max_drawdown_start,
+        max_drawdown_end,
+        max_drawdown_peak_value,
+        max_drawdown_trough_value,
+    )
 
 
 def _compute_trade_stats(

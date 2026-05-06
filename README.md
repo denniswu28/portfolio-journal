@@ -5,8 +5,11 @@ A command-line portfolio tracking and LLM prompt generation tool for Fidelity po
 ## Features
 
 - **Fidelity CSV Import** — load positions directly from a Fidelity positions export, including cash rows and fractional shares
+- **Fidelity Daily Bundles** — group each day's positions, allocation, geography, style, and periodic-return CSVs under a dated folder
 - **Live Quotes** — optionally refresh prices via yfinance
 - **Analytics** — cost basis, unrealized/realized P&L, Sharpe ratio, max drawdown, win rate
+- **Reports & Plots** — export metrics spreadsheets plus return/drawdown, P&L, concentration, allocation, geography, and style plots
+- **Portfolio Theory Rebalance** — research broad secular-growth sleeves, fetch Yahoo Finance history, and export equal-vol, ERC, Sharpe-weighted, and max-Sharpe target weights
 - **Trade Log** — record trades with free-text rationale and tags
 - **Daily Journal** — keep one daily record of snapshots, P&L, prompts, and LLM decisions
 - **LLM Prompt Engine** — generate ready-to-paste prompts for ChatGPT, Claude, etc.
@@ -30,12 +33,39 @@ Download your Positions CSV from Fidelity, then run:
 python main.py sync --input-file Portfolio_Positions_Apr-22-2026.csv
 ```
 
-The Fidelity loader maps columns such as `Symbol`, `Description`, `Quantity`, `Last Price`, `Current Value`, `Today's Gain/Loss`, `Cost Basis Total`, and `Average Cost Basis`. It also preserves fractional shares, recognizes money-market cash rows such as `SPAXX**`, and tolerates Fidelity's trailing empty fields and footer text.
+The Fidelity loader maps columns such as `Symbol`, `Description`, `Quantity`, `Last Price`, `Current Value`, `Today's Gain/Loss`, `Cost Basis Total`, and `Average Cost Basis`. It also preserves fractional shares, recognizes money-market cash rows such as `SPAXX**`, uses Fidelity's `Date downloaded ... ET` footer for historical snapshot timestamps, and tolerates trailing empty fields and footer text.
+
+To keep the full daily Fidelity export set together, organize the files into a dated bundle and sync from that folder:
+
+```bash
+python main.py organize-exports --date 2026-05-06 --move --include-snapshots \
+  data/portfolio_snapshots/Portfolio_Positions_May-06-2026.csv \
+  data/portfolio_snapshots/Asset_allocation.csv \
+  data/portfolio_snapshots/Geographic_exposure.csv \
+  data/portfolio_snapshots/Periodic_returns.csv \
+  data/portfolio_snapshots/style.csv
+
+python main.py sync-bundle --date 2026-05-06
+```
+
+The bundle folder uses normalized names such as `positions.csv`, `asset_allocation.csv`, `geographic_exposure.csv`, `periodic_returns.csv`, and `style.csv`, plus a `manifest.json` that records the original filenames and detected dates.
+
+Daily workflow after downloading Fidelity CSVs:
+
+```bash
+python main.py organize-exports --date YYYY-MM-DD --move FILES...
+python main.py sync-bundle --date YYYY-MM-DD
+python main.py report --output-dir output/reports
+python main.py prompt --type trade -q "Analyze tomorrow's trade plan."
+```
 
 ### 3. View portfolio status
 
 ```bash
 python main.py status
+python main.py analytics
+python main.py report --output-dir output/reports
+python main.py rebalance-weights --method erc --period 3y --interval 1wk
 ```
 
 ### 4. Log a trade
@@ -95,11 +125,16 @@ portfolio-journal/
 │   │   ├── models.py               # Pydantic data models
 │   │   ├── paste_parser.py         # Legacy text parser, not part of the Fidelity workflow
 │   │   ├── csv_loader.py           # Load Fidelity positions CSV exports
+│   │   ├── fidelity_bundle.py       # Organize daily Fidelity CSV bundles
+│   │   ├── fidelity_analysis_loader.py
+│   │   │                            # Load allocation, geography, style, returns CSVs
 │   │   └── market_data.py          # Live quotes via yfinance
 │   │
 │   ├── portfolio/
 │   │   ├── tracker.py              # Build enriched PortfolioSnapshot
-│   │   └── analytics.py            # Cost basis, P&L, performance metrics
+│   │   ├── analytics.py            # Cost basis, P&L, performance metrics
+│   │   ├── reporting.py            # Spreadsheet and return-series exports
+│   │   └── plots.py                # Static PNG report charts
 │   │
 │   ├── trade_log/
 │   │   ├── logger.py               # Record trades to JSON
@@ -113,13 +148,22 @@ portfolio-journal/
 │       └── config_loader.py        # YAML config helpers
 │
 ├── data/
-│   ├── portfolio_snapshots/        # Saved JSON snapshots
+│   ├── portfolio_snapshots/        # Dated Fidelity bundles and saved JSON snapshots
+│   │   └── YYYY-MM-DD/
+│   │       ├── positions.csv
+│   │       ├── asset_allocation.csv
+│   │       ├── geographic_exposure.csv
+│   │       ├── periodic_returns.csv
+│   │       ├── style.csv
+│   │       ├── manifest.json
+│   │       └── snapshot_YYYYMMDD_HHMMSS.json
 │   ├── journal.json                # Daily journal with snapshots, trades, prompts, decisions
 │   ├── trade_history.json          # Trade log
 │   └── rationale_log.json          # Trade rationale archive
 │
 ├── output/
-│   └── prompts/                    # Auto-saved prompt files
+│   ├── prompts/                    # Auto-saved prompt files
+│   └── reports/                    # CSV spreadsheets and PNG report plots
 │
 └── tests/                          # pytest test suite
 ```
@@ -154,15 +198,121 @@ This README documents the Fidelity CSV workflow only.
 
 Download the Positions CSV from Fidelity and point `sync --input-file` at that file.
 
+If you also download Fidelity's supplemental analysis exports, use `organize-exports` to keep the daily set together under `data/portfolio_snapshots/YYYY-MM-DD/` and then run `sync-bundle --date YYYY-MM-DD`.
+
+Supported daily bundle files:
+
+- `positions.csv` — authoritative holdings snapshot source
+- `asset_allocation.csv` — asset class breakdown by security
+- `geographic_exposure.csv` — region/country exposure by security
+- `style.csv` — style-box exposure by security
+- `periodic_returns.csv` — Fidelity-reported time-weighted and money-weighted account returns
+
+`periodic_returns.csv` is report/graph context only. It can add source-labeled Fidelity return points to `output/reports/return_series.csv`, but it does not create synthetic holdings snapshots.
+
+### Dated Bundle Layout
+
+Daily exports live under `data/portfolio_snapshots/YYYY-MM-DD/`:
+
+```text
+data/portfolio_snapshots/2026-05-06/
+├── positions.csv
+├── asset_allocation.csv
+├── geographic_exposure.csv
+├── periodic_returns.csv
+├── style.csv
+├── manifest.json
+└── snapshot_20260506_140500.json
+```
+
+`positions.csv` is the authoritative holdings input. The supplemental files enrich analysis only:
+
+- `asset_allocation.csv` adds domestic stock, foreign stock, bonds, short-term, and other exposure.
+- `geographic_exposure.csv` adds region and country exposure.
+- `style.csv` adds style-box exposure such as Large Blend, Large Growth, and Medium Growth.
+- `periodic_returns.csv` adds Fidelity-reported time-weighted and money-weighted return points.
+
+Files that do not contain their own date, such as allocation, geography, and style, use the folder date as their `as_of` date. `periodic_returns.csv` uses the period-end date inside the first row, for example `Prior month end performance as of Apr-30-2026`.
+
+### Backfilling History
+
+There are two backfill paths:
+
+- If a historical `positions.csv` exists, run `sync-bundle --date YYYY-MM-DD`. The snapshot timestamp comes from Fidelity's `Date downloaded ... ET` footer, so the generated JSON lands on the correct historical date.
+- If only `periodic_returns.csv` exists, the app can add source-labeled Fidelity return rows to `return_series.csv`. These rows enrich the return graph, but they are not treated as holdings snapshots and are not used for position-level P&L or weights.
+
+Repeated intraday snapshots are preserved on disk. Analytics and reports use the latest snapshot per calendar day for return metrics, so multiple same-day syncs do not distort daily return calculations.
+
+### Report Outputs
+
+Run:
+
+```bash
+python main.py report --output-dir output/reports
+```
+
+Core outputs:
+
+- `metrics_summary.csv` - headline performance metrics such as cumulative return, annualized return, volatility, Sharpe, Calmar, and max drawdown.
+- `portfolio_timeseries.csv` - snapshot-derived daily value, return, running peak, and drawdown rows.
+- `return_series.csv` - source-labeled return rows from snapshots and Fidelity periodic returns.
+- `return_drawdown.png` - cumulative return and drawdown chart.
+- `unrealized_pnl.png` - latest unrealized P&L by position.
+- `position_weights.png` - latest position concentration chart.
+
+Supplemental outputs appear when the dated bundle has the relevant Fidelity CSVs:
+
+- `asset_allocation_summary.csv` and `asset_allocation.png`
+- `geographic_exposure_summary.csv` and `geographic_exposure.png`
+- `style_summary.csv` and `style_exposure.png`
+- `fidelity_periodic_returns.csv`
+
+### Portfolio Theory Rebalance
+
+Run:
+
+```bash
+python main.py rebalance-weights --method erc --period 3y --interval 1wk
+```
+
+The command reads `config/growth_universe.yaml`, pulls Yahoo Finance price history for each sleeve proxy, computes historical returns, volatility, covariance, and Sharpe ratios, then exports:
+
+- `rebalance_weights_YYYYMMDD_HHMMSS.csv` - spreadsheet target weights, current weights, target dollars, trade dollars, and method comparisons.
+- `rebalance_plan_YYYYMMDD_HHMMSS.md` - human-readable rebalance plan with sleeve roles, warnings, and method notes.
+
+Supported methods:
+
+- `equal-vol` - inverse-volatility weights.
+- `erc` - equal-risk-contribution/risk-parity approximation.
+- `sharpe-weighted` - inverse-volatility weights tilted toward positive individual Sharpe ratios.
+- `max-sharpe` - bounded long-only tangency allocation from historical excess returns.
+
+The default universe is Boist-derived rather than broadly secular. It keeps memory/storage, CPU/foundry/packaging, semiconductor beta, and AI platforms as the core growth engine, then adds smaller connected sleeves for data-center power/grid, electrical and thermal equipment, data-center connectivity/facilities, power generation/uranium, industrial metals/materials, agentic cybersecurity, industrial automation/edge AI, and defense/aerospace. Broad US, ex-US, gold/metals, and Treasury/TIPS sleeves remain ballast. Edit `config/growth_universe.yaml` to change proxies, candidate holdings, sleeve minimums/maximums, cash target, or trade-size threshold.
+
+### Journal And Prompt Enrichment
+
+When a dated bundle has supplemental Fidelity exports, `sync-bundle` records exposure context in the daily journal. The journal can show top asset classes, regions, countries, styles, and Fidelity-reported TWR values:
+
+```bash
+python main.py journal --date 2026-05-06
+```
+
+Generated trade, review, and risk prompts include the same exposure context when it is available for the selected snapshot.
+
 ### CLI Reference
 
 ```bash
 python main.py sync -i FILE              # Load from a Fidelity positions CSV
 python main.py sync -i FILE --refresh-prices
                                         # Load from Fidelity CSV and then fetch live quotes
+python main.py organize-exports --date YYYY-MM-DD FILES...
+                                        # Group Fidelity CSV exports into a dated folder
+python main.py sync-bundle --date YYYY-MM-DD
+                                        # Load positions.csv and attach supplemental CSV context
 
 python main.py status                    # Current portfolio table
 python main.py analytics                 # Performance metrics
+python main.py report                    # Metrics CSVs and PNG plots
 
 python main.py log-trade -t TICKER -a BUY -s SHARES -p PRICE -r "Rationale"
 python main.py history                   # Recent trades

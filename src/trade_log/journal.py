@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from src.data_ingestion.models import (
+    FidelityAnalysisBundle,
+    JournalExposureSummary,
     JournalDecisionRecord,
     JournalEntry,
     JournalPnlSummary,
@@ -18,6 +20,13 @@ from src.data_ingestion.models import (
     Trade,
 )
 from src.portfolio.analytics import realized_pnl, total_pnl
+from src.portfolio.reporting import (
+    latest_time_weighted_periodic_return,
+    summarize_asset_allocation,
+    summarize_country_exposure,
+    summarize_geographic_exposure,
+    summarize_style_exposure,
+)
 
 
 class JournalStore:
@@ -48,6 +57,7 @@ class JournalStore:
         snapshot_path: str | Path,
         trades: Optional[List[Trade]] = None,
         metrics: Optional[PerformanceMetrics] = None,
+        analysis_bundle: Optional[FidelityAnalysisBundle] = None,
     ) -> JournalEntry:
         entry = self._get_or_create_entry(snapshot.timestamp)
         unrealized = total_pnl(snapshot)
@@ -81,6 +91,7 @@ class JournalStore:
             avg_loss_pct=metrics.avg_loss_pct if metrics else 0.0,
             concentration_top3_pct=metrics.concentration_top3_pct if metrics else 0.0,
         )
+        entry.exposure_summary = _build_exposure_summary(analysis_bundle)
 
         return self._upsert_entry(entry)
 
@@ -178,3 +189,34 @@ def _normalize_entry_date(value: str | date | datetime) -> str:
     if isinstance(value, date):
         return value.isoformat()
     return str(value)
+
+
+def _build_exposure_summary(
+    analysis_bundle: Optional[FidelityAnalysisBundle],
+) -> Optional[JournalExposureSummary]:
+    if not analysis_bundle:
+        return None
+
+    periodic = latest_time_weighted_periodic_return(analysis_bundle)
+    return JournalExposureSummary(
+        source_dir=analysis_bundle.source_dir,
+        top_asset_classes=_format_summary_items(
+            summarize_asset_allocation(analysis_bundle.asset_allocation, limit=4)
+        ),
+        top_regions=_format_summary_items(
+            summarize_geographic_exposure(analysis_bundle.geographic_exposure, limit=4)
+        ),
+        top_countries=_format_summary_items(
+            summarize_country_exposure(analysis_bundle.geographic_exposure, limit=4)
+        ),
+        top_styles=_format_summary_items(
+            summarize_style_exposure(analysis_bundle.style_exposure, limit=4)
+        ),
+        fidelity_period_end=periodic.period_end_date if periodic else None,
+        fidelity_twr_ytd_pct=periodic.ytd_pct if periodic else None,
+        fidelity_twr_life_pct=periodic.life_pct if periodic else None,
+    )
+
+
+def _format_summary_items(rows: list[dict[str, object]]) -> list[str]:
+    return [f"{row['name']}: {float(row['weight_pct']):.1f}%" for row in rows]

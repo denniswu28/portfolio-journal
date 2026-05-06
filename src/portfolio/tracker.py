@@ -119,6 +119,7 @@ class PortfolioTracker:
         )
 
         snapshot = PortfolioSnapshot(
+            timestamp=raw.parsed_at,
             total_portfolio_value=total_value,
             cash=raw.cash,
             invested_value=total_invested,
@@ -141,8 +142,10 @@ class PortfolioTracker:
         Returns:
             Path to the saved file.
         """
+        snapshot_dir = self.snapshots_dir / snapshot.timestamp.date().isoformat()
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
         filename = snapshot.timestamp.strftime("snapshot_%Y%m%d_%H%M%S.json")
-        filepath = self.snapshots_dir / filename
+        filepath = snapshot_dir / filename
         with open(filepath, "w", encoding="utf-8") as fh:
             fh.write(snapshot.model_dump_json(indent=2))
         return filepath
@@ -160,14 +163,14 @@ class PortfolioTracker:
         Returns:
             The most recent PortfolioSnapshot, or None if none exist.
         """
-        files = sorted(self.snapshots_dir.glob("snapshot_*.json"))
+        files = self.list_snapshots()
         if not files:
             return None
         return self.load_snapshot(files[-1])
 
     def list_snapshots(self) -> List[Path]:
         """Return all snapshot files sorted oldest-first."""
-        return sorted(self.snapshots_dir.glob("snapshot_*.json"))
+        return sorted(self.snapshots_dir.rglob("snapshot_*.json"), key=_snapshot_sort_key)
 
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
@@ -195,3 +198,12 @@ def _compute_avg_cost(trades: List[Trade], ticker: str) -> float:
                 total_shares -= trade.shares
 
     return (total_cost / total_shares) if total_shares > 0 else 0.0
+
+
+def _snapshot_sort_key(path: Path) -> tuple[datetime, str]:
+    """Sort snapshots by timestamp encoded in the filename, with path as tie-breaker."""
+    try:
+        timestamp = datetime.strptime(path.stem, "snapshot_%Y%m%d_%H%M%S")
+    except ValueError:
+        timestamp = datetime.min
+    return timestamp, str(path)

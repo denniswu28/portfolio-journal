@@ -3,6 +3,7 @@
 import pytest
 import tempfile
 import os
+from datetime import datetime
 
 from src.data_ingestion.csv_loader import CSVLoader
 
@@ -161,6 +162,15 @@ class TestCSVLoader:
             assert smh.cost_basis_per_share == pytest.approx(
                 (295.07 + 131.39) / 1.064
             )
+        finally:
+            os.unlink(path)
+
+    def test_fidelity_loader_preserves_downloaded_timestamp(self):
+        path = self._write_temp_csv(FIDELITY_CSV)
+        try:
+            result = self.loader.load(path)
+
+            assert result.parsed_at == datetime(2026, 4, 22, 21, 19)
         finally:
             os.unlink(path)
 

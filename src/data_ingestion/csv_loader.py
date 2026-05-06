@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -111,6 +112,8 @@ class CSVLoader:
         if not path.exists():
             raise FileNotFoundError(f"CSV file not found: {filepath}")
 
+        source_text = path.read_text(encoding="utf-8-sig", errors="ignore")
+        parsed_at = _extract_fidelity_downloaded_at(source_text)
         df = pd.read_csv(path, dtype=str, index_col=False)
         normalized_columns = {_normalize_column_name(c): c for c in df.columns}
 
@@ -120,6 +123,7 @@ class CSVLoader:
                 normalized_columns=normalized_columns,
                 cash=cash,
                 total_value=total_value,
+                parsed_at=parsed_at,
             )
 
         if {"ticker", "shares", "currentprice"}.issubset(normalized_columns):
@@ -135,6 +139,7 @@ class CSVLoader:
                 normalized_columns=normalized_columns,
                 cash=cash,
                 total_value=total_value,
+                parsed_at=parsed_at,
             )
 
         raise ValueError(
@@ -148,6 +153,7 @@ class CSVLoader:
         normalized_columns: dict[str, str],
         cash: float,
         total_value: Optional[float],
+        parsed_at: Optional[datetime] = None,
     ) -> RawPortfolioData:
         positions: list[RawPosition] = []
 
@@ -190,6 +196,7 @@ class CSVLoader:
             total_gain_loss=sum(p.gain_loss for p in positions),
             total_gain_loss_pct=_portfolio_gain_loss_pct(positions),
             positions=positions,
+            parsed_at=parsed_at or datetime.now(),
         )
 
     def _load_fidelity_csv(
@@ -198,6 +205,7 @@ class CSVLoader:
         normalized_columns: dict[str, str],
         cash: float,
         total_value: Optional[float],
+        parsed_at: Optional[datetime] = None,
     ) -> RawPortfolioData:
         positions: list[RawPosition] = []
         derived_cash = 0.0
@@ -283,6 +291,7 @@ class CSVLoader:
             total_gain_loss=total_gain_loss,
             total_gain_loss_pct=total_gain_loss_pct,
             positions=positions,
+            parsed_at=parsed_at or datetime.now(),
         )
 
 
@@ -406,6 +415,38 @@ def _parse_number(value: object) -> float:
     if math.isnan(number):
         return 0.0
     return -number if negative else number
+
+
+def _extract_fidelity_downloaded_at(source_text: str) -> Optional[datetime]:
+    """Parse Fidelity's footer download timestamp when it is present."""
+    match = re.search(
+        r"Date\s+downloaded\s+([A-Za-z]{3})-(\d{1,2})-(\d{4})\s+"
+        r"(\d{1,2}):(\d{2})\s+([ap])\.?m\.?\s+ET",
+        source_text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    month_text, day_text, year_text, hour_text, minute_text, meridiem = match.groups()
+    try:
+        month = datetime.strptime(month_text.title(), "%b").month
+    except ValueError:
+        return None
+
+    hour = int(hour_text)
+    if meridiem.lower() == "p" and hour != 12:
+        hour += 12
+    elif meridiem.lower() == "a" and hour == 12:
+        hour = 0
+
+    return datetime(
+        year=int(year_text),
+        month=month,
+        day=int(day_text),
+        hour=hour,
+        minute=int(minute_text),
+    )
 
 
 def _normalize_column_name(name: str) -> str:

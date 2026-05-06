@@ -159,3 +159,21 @@ class TestComputeMetrics:
         sharpe = _compute_sharpe(returns)
         assert sharpe is not None
         assert isinstance(sharpe, float)
+
+    def test_extended_risk_metrics(self):
+        base = datetime(2024, 1, 1)
+        snapshots = [
+            make_snapshot(100000.0, ts=base),
+            make_snapshot(120000.0, ts=base + timedelta(days=1)),
+            make_snapshot(90000.0, ts=base + timedelta(days=2)),
+            make_snapshot(110000.0, ts=base + timedelta(days=3)),
+        ]
+
+        metrics = compute_metrics(snapshots)
+
+        assert metrics.annualized_return_pct != 0.0
+        assert metrics.annualized_volatility_pct > 0.0
+        assert metrics.calmar_ratio is not None
+        assert metrics.max_drawdown_pct == pytest.approx(25.0)
+        assert metrics.max_drawdown_start == base + timedelta(days=1)
+        assert metrics.max_drawdown_end == base + timedelta(days=2)

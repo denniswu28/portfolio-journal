@@ -1,0 +1,2 @@
+as_of,total_portfolio_value,cash,invested_value,cumulative_return_pct,annualized_return_pct,annualized_volatility_pct,sharpe_ratio,calmar_ratio,max_drawdown_pct,max_drawdown_start,max_drawdown_end,max_drawdown_peak_value,max_drawdown_trough_value,win_rate_pct,avg_win_pct,avg_loss_pct,concentration_top3_pct,total_trades,winning_trades,losing_trades
+2026-05-06 14:05:00,19447.75,3531.72,15916.183201,21.109039,16453.3261,0.0,,,0.0,,,16058.05,16058.05,0.0,0.0,0.0,33.665871,0,0,0

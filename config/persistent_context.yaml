@@ -11,7 +11,7 @@ risk_tolerance: "Moderate"
 investment_horizon: "3 months"
 
 constraints:
-  - "No single position > 10% of portfolio"
+  - "No single equity or equity ETF position > 10% of portfolio; gold and precious-metal hedges are exempt from this equity cap when documented"
   - "Keep 5-15% cash reserve"
   - "No options"
 
@@ -21,6 +21,7 @@ rules:
   - "Always document rationale before entering a trade"
   - "Review portfolio every evening"
   - "Consider sector concentration before adding new positions"
+  - "Do not use broad index inverse ETFs for AI-loser hedges when the plan expects QQQ/compute beta to rise; METD is the default META hedge, and direct individual stock shorts require documented borrow, margin, locate/recall, liquidity, sizing, and exit rules"
 
 benchmark: "SPY"
 

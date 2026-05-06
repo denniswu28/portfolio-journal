@@ -2,10 +2,10 @@
   {
     "entry_date": "2026-04-22",
     "created_at": "2026-04-22T19:29:34.222461",
-    "updated_at": "2026-04-22T19:29:37.514542",
+    "updated_at": "2026-05-06T11:30:23.531390",
     "snapshot": {
-      "snapshot_path": "data\\portfolio_snapshots\\snapshot_20260422_192934.json",
-      "snapshot_timestamp": "2026-04-22T19:29:34.187729",
+      "snapshot_path": "data\\portfolio_snapshots\\snapshot_20260422_212900.json",
+      "snapshot_timestamp": "2026-04-22T21:29:00",
       "total_value": 16058.05,
       "cash": 3085.2299999999996,
       "invested_value": 12972.94127,
@@ -25,13 +25,14 @@
       "cumulative_return_pct": 3.5015620578815465,
       "today_change": 239.73000000000002,
       "today_change_pct": 1.5155212437224688,
-      "sharpe_ratio": null,
+      "sharpe_ratio": 7.9074,
       "max_drawdown_pct": 0.0,
       "win_rate_pct": 0.0,
       "avg_win_pct": 0.0,
       "avg_loss_pct": 0.0,
-      "concentration_top3_pct": 33.002718325076835
+      "concentration_top3_pct": 33.66587060199766
     },
+    "exposure_summary": null,
     "trades": [],
     "prompts": [
       {
@@ -41,6 +42,90 @@
         "output_path": "output\\prompts\\tomorrow_trade_prompt.txt",
         "snapshot_path": "data\\portfolio_snapshots\\snapshot_20260422_192934.json",
         "token_count": 871
+      }
+    ],
+    "decisions": []
+  },
+  {
+    "entry_date": "2026-05-06",
+    "created_at": "2026-05-06T11:20:42.376632",
+    "updated_at": "2026-05-06T11:54:20.981394",
+    "snapshot": {
+      "snapshot_path": "data\\portfolio_snapshots\\2026-05-06\\snapshot_20260506_140500.json",
+      "snapshot_timestamp": "2026-05-06T14:05:00",
+      "total_value": 19447.75,
+      "cash": 3531.72,
+      "invested_value": 15916.183200700001,
+      "today_change": 256.67,
+      "today_change_pct": 1.337444270984228,
+      "total_gain_loss": 1399.6,
+      "total_gain_loss_pct": 9.641541718039283,
+      "cumulative_return_pct": 7.754811434967013,
+      "positions_count": 34
+    },
+    "pnl_summary": {
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 1399.8325907000003,
+      "unrealized_pnl_pct": 9.643143985070779,
+      "total_gain_loss": 1399.6,
+      "total_gain_loss_pct": 9.641541718039283,
+      "cumulative_return_pct": 7.754811434967013,
+      "today_change": 256.67,
+      "today_change_pct": 1.337444270984228,
+      "sharpe_ratio": null,
+      "max_drawdown_pct": 0.0,
+      "win_rate_pct": 0.0,
+      "avg_win_pct": 0.0,
+      "avg_loss_pct": 0.0,
+      "concentration_top3_pct": 33.66587060199766
+    },
+    "exposure_summary": {
+      "source_dir": "data\\portfolio_snapshots\\2026-05-06",
+      "top_asset_classes": [
+        "Domestic Stock: 52.0%",
+        "Short Term: 20.7%",
+        "Other: 17.3%",
+        "Foreign Stock: 9.5%"
+      ],
+      "top_regions": [
+        "North America: 85.3%",
+        "Asia Developed: 5.7%",
+        "Europe Developed: 5.6%",
+        "Latin America: 2.2%"
+      ],
+      "top_countries": [
+        "United States: 84.8%",
+        "Taiwan: 5.3%",
+        "Ireland: 3.6%",
+        "Cayman Islands: 2.1%"
+      ],
+      "top_styles": [
+        "Large Blend: 42.4%",
+        "Large Growth: 33.8%",
+        "Large Value: 7.7%",
+        "Medium Growth: 6.9%"
+      ],
+      "fidelity_period_end": "2026-04-30",
+      "fidelity_twr_ytd_pct": 9.07,
+      "fidelity_twr_life_pct": 7.75
+    },
+    "trades": [],
+    "prompts": [
+      {
+        "created_at": "2026-05-06T11:21:17.881555",
+        "prompt_type": "trade",
+        "question": "Analyze the latest portfolio snapshot and recommend tomorrow's trade plan",
+        "output_path": "output\\prompts\\tomorrow_trade_prompt_20260506.txt",
+        "snapshot_path": "data\\portfolio_snapshots\\snapshot_20260506_112042.json",
+        "token_count": 849
+      },
+      {
+        "created_at": "2026-05-06T11:54:20.959864",
+        "prompt_type": "trade",
+        "question": "Analyze tomorrow's trade plan with the Fidelity exposure context.",
+        "output_path": "output\\prompts\\tomorrow_trade_prompt_20260506_enriched.txt",
+        "snapshot_path": "data\\portfolio_snapshots\\2026-05-06\\snapshot_20260506_140500.json",
+        "token_count": 975
       }
     ],
     "decisions": []

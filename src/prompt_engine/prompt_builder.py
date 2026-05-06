@@ -14,7 +14,20 @@ from typing import List, Optional
 
 from jinja2 import Template
 
-from src.data_ingestion.models import PerformanceMetrics, PortfolioSnapshot, Trade, PersistentContext
+from src.data_ingestion.models import (
+    FidelityAnalysisBundle,
+    PerformanceMetrics,
+    PersistentContext,
+    PortfolioSnapshot,
+    Trade,
+)
+from src.portfolio.reporting import (
+    latest_time_weighted_periodic_return,
+    summarize_asset_allocation,
+    summarize_country_exposure,
+    summarize_geographic_exposure,
+    summarize_style_exposure,
+)
 
 
 # ── TEMPLATES ──────────────────────────────────────────────────────────────────
@@ -52,6 +65,16 @@ Cumulative Return: {{ "%+.2f"|format(cumulative_return) }}%
 - Win Rate: {{ "%.1f"|format(metrics.win_rate_pct) }}%
 - Avg Win: {{ "%+.2f"|format(metrics.avg_win_pct) }}% | Avg Loss: {{ "%.2f"|format(metrics.avg_loss_pct) }}%
 - Top-3 Concentration: {{ "%.1f"|format(metrics.concentration_top3_pct) }}%
+{% endif %}
+
+{% if analysis_summary %}
+## Fidelity Exposure Context
+{% if analysis_summary.asset_classes %}- Asset classes: {{ analysis_summary.asset_classes | join("; ") }}
+{% endif %}{% if analysis_summary.regions %}- Regions: {{ analysis_summary.regions | join("; ") }}
+{% endif %}{% if analysis_summary.countries %}- Countries: {{ analysis_summary.countries | join("; ") }}
+{% endif %}{% if analysis_summary.styles %}- Style tilt: {{ analysis_summary.styles | join("; ") }}
+{% endif %}{% if analysis_summary.periodic_return %}- Fidelity TWR as of {{ analysis_summary.periodic_return.period_end }}: YTD {{ analysis_summary.periodic_return.ytd }}, life {{ analysis_summary.periodic_return.life }}
+{% endif %}
 {% endif %}
 
 ## Recent Trades (Last {{ recent_trades|length }})
@@ -107,6 +130,16 @@ Cumulative Return: {{ "%+.2f"|format(cumulative_return) }}%
 - Win Rate: {{ "%.1f"|format(metrics.win_rate_pct) }}% ({{ metrics.winning_trades }}W / {{ metrics.losing_trades }}L)
 {% endif %}
 
+{% if analysis_summary %}
+## Fidelity Exposure Context
+{% if analysis_summary.asset_classes %}- Asset classes: {{ analysis_summary.asset_classes | join("; ") }}
+{% endif %}{% if analysis_summary.regions %}- Regions: {{ analysis_summary.regions | join("; ") }}
+{% endif %}{% if analysis_summary.countries %}- Countries: {{ analysis_summary.countries | join("; ") }}
+{% endif %}{% if analysis_summary.styles %}- Style tilt: {{ analysis_summary.styles | join("; ") }}
+{% endif %}{% if analysis_summary.periodic_return %}- Fidelity TWR as of {{ analysis_summary.periodic_return.period_end }}: YTD {{ analysis_summary.periodic_return.ytd }}, life {{ analysis_summary.periodic_return.life }}
+{% endif %}
+{% endif %}
+
 ## Review Request
 {{ user_question }}
 
@@ -140,6 +173,16 @@ Risk Metrics:
 - Win Rate: {{ "%.1f"|format(metrics.win_rate_pct) }}%
 {% endif %}
 
+{% if analysis_summary %}
+Fidelity Exposure Context:
+{% if analysis_summary.asset_classes %}- Asset classes: {{ analysis_summary.asset_classes | join("; ") }}
+{% endif %}{% if analysis_summary.regions %}- Regions: {{ analysis_summary.regions | join("; ") }}
+{% endif %}{% if analysis_summary.countries %}- Countries: {{ analysis_summary.countries | join("; ") }}
+{% endif %}{% if analysis_summary.styles %}- Style tilt: {{ analysis_summary.styles | join("; ") }}
+{% endif %}{% if analysis_summary.periodic_return %}- Fidelity TWR as of {{ analysis_summary.periodic_return.period_end }}: YTD {{ analysis_summary.periodic_return.ytd }}, life {{ analysis_summary.periodic_return.life }}
+{% endif %}
+{% endif %}
+
 ## Risk Review Request
 {{ user_question }}
 
@@ -166,6 +209,7 @@ def _build_context(
     metrics: Optional[PerformanceMetrics],
     persistent_ctx: PersistentContext,
     question: str,
+    analysis_bundle: Optional[FidelityAnalysisBundle] = None,
 ) -> dict:
     """Assemble all Jinja2 template variables into a single context dict."""
     cash_pct = (
@@ -187,8 +231,37 @@ def _build_context(
         "cumulative_return": snapshot.cumulative_return_pct,
         "positions": snapshot.positions,
         "metrics": metrics,
+        "analysis_summary": _build_analysis_summary(analysis_bundle),
         "recent_trades": recent_trades,
         "user_question": question,
+    }
+
+
+def _build_analysis_summary(analysis_bundle: Optional[FidelityAnalysisBundle]) -> Optional[dict]:
+    if not analysis_bundle:
+        return None
+
+    periodic = latest_time_weighted_periodic_return(analysis_bundle)
+    return {
+        "asset_classes": _format_summary_items(
+            summarize_asset_allocation(analysis_bundle.asset_allocation, limit=5)
+        ),
+        "regions": _format_summary_items(
+            summarize_geographic_exposure(analysis_bundle.geographic_exposure, limit=5)
+        ),
+        "countries": _format_summary_items(
+            summarize_country_exposure(analysis_bundle.geographic_exposure, limit=5)
+        ),
+        "styles": _format_summary_items(
+            summarize_style_exposure(analysis_bundle.style_exposure, limit=5)
+        ),
+        "periodic_return": {
+            "period_end": periodic.period_end_date.isoformat(),
+            "ytd": _format_optional_pct(periodic.ytd_pct),
+            "life": _format_optional_pct(periodic.life_pct),
+        }
+        if periodic
+        else None,
     }
 
 
@@ -201,6 +274,7 @@ def generate_prompt(
     metrics: Optional[PerformanceMetrics],
     persistent_ctx: PersistentContext,
     user_question: str,
+    analysis_bundle: Optional[FidelityAnalysisBundle] = None,
 ) -> str:
     """
     Render a fully formatted LLM prompt ready to paste into any AI assistant.
@@ -226,6 +300,21 @@ def generate_prompt(
         )
 
     template_str = TEMPLATES[prompt_type]
-    context = _build_context(snapshot, recent_trades, metrics, persistent_ctx, user_question)
+    context = _build_context(
+        snapshot,
+        recent_trades,
+        metrics,
+        persistent_ctx,
+        user_question,
+        analysis_bundle=analysis_bundle,
+    )
     template = Template(template_str)
     return template.render(**context)
+
+
+def _format_summary_items(rows: list[dict[str, object]]) -> list[str]:
+    return [f"{row['name']} {float(row['weight_pct']):.1f}%" for row in rows]
+
+
+def _format_optional_pct(value: Optional[float]) -> str:
+    return "N/A" if value is None else f"{value:+.2f}%"
