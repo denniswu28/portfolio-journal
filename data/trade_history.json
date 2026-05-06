@@ -1,0 +1,24 @@
+[
+  {
+    "id": "6a3590a0-a7e7-4e20-a44e-3853a2089e60",
+    "ticker": "KALU",
+    "action": "BUY",
+    "shares": 6,
+    "price": 169.57,
+    "total_value": 1017.42,
+    "rationale": "Diversify into industrials sector",
+    "timestamp": "2026-04-30T13:04:46.469443",
+    "tags": []
+  },
+  {
+    "id": "fa2be2cc-2442-4b3c-9848-6f50025c10e1",
+    "ticker": "CAH",
+    "action": "BUY",
+    "shares": 5,
+    "price": 192.75,
+    "total_value": 963.75,
+    "rationale": "Diversify into healthcare sector",
+    "timestamp": "2026-04-30T13:05:31.165586",
+    "tags": []
+  }
+]
