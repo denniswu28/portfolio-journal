@@ -209,3 +209,12 @@ __marimo__/
 # Portfolio tracker runtime data
 data/
 output/prompts/*.txt
+output/reports/
+
+# Sensitive data files
+*.csv
+*.env
+*.env.*
+
+# Keep directory scaffolding even inside ignored dirs
+!**/.gitkeep

@@ -1,4 +1,0 @@
-date,source,return_type,account,portfolio_value,period_return_pct,cumulative_return_pct,fidelity_one_month_pct,fidelity_ytd_pct,fidelity_life_pct,running_peak,drawdown_pct
-2026-04-22 21:29:00,snapshot,portfolio_value,,16058.05,0.0,0.0,,,,16058.05,0.0
-2026-04-30,fidelity_periodic_returns,time_weighted,Cash Management (Individual - TOD) Z26679636,,,7.75,10.46,9.07,7.75,,
-2026-05-06 14:05:00,snapshot,portfolio_value,,19447.75,21.109039,21.109039,,,,19447.75,0.0
