@@ -7,6 +7,7 @@ def test_catalyst_models_defaults_and_to_dict():
     assert item.to_dict()["ticker"] == "NVDA"
 
     macro = MacroCatalyst(direction="bear", summary="hot CPI")
+    assert macro.event_date is None and macro.source_url is None
     assert macro.to_dict()["direction"] == "bear"
 
     ctx = CatalystContext()

@@ -112,10 +112,10 @@ class CatalystContext:
     path: Optional[str] = None
     catalyst_date: Optional[str] = None
     generated_by: str = ""
-    items: List["CatalystItem"] = field(default_factory=list)
-    macro: List["MacroCatalyst"] = field(default_factory=list)
+    items: List[CatalystItem] = field(default_factory=list)
+    macro: List[MacroCatalyst] = field(default_factory=list)
     freeform_notes: str = ""
-    near_term: List["CatalystItem"] = field(default_factory=list)
+    near_term: List[CatalystItem] = field(default_factory=list)
     digest: str = ""
     stale_vs_snapshot: bool = False
     found: bool = False
