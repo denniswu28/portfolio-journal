@@ -99,6 +99,7 @@ from src.options.reporting import order_ticket_lines, write_option_ticket
 from src.options.risk import aggregate_greeks, options_sleeve_status, stress_test
 from src.options.screener import screen_chain
 from src.options.strategies import analyze_strategy, build_named_strategy, validate_level2
+from src.prompt_engine.catalyst_prompt import generate_catalyst_prompt
 from src.prompt_engine.formatter import estimate_tokens, truncate_to_budget
 from src.prompt_engine.prompt_builder import generate_prompt
 from src.trade_log.history import TradeHistory
@@ -2055,6 +2056,64 @@ def daily_advisory(brief_date_text, snapshot_path, universe_path, thesis_file, d
     click.echo(f"\nGenerated:\n  {md_path}\n  {json_path}")
     if run.prompt_path:
         click.echo(f"  {run.prompt_path}")
+
+
+@cli.command("catalyst-prompt")
+@click.option("--date", "as_of_text", default=None, help="Run date YYYY-MM-DD (default: snapshot date).")
+@click.option("--snapshot", "snapshot_path", default=None, help="Snapshot to use (default: latest).")
+@click.option("--universe", "universe_path", default="config/growth_universe.yaml")
+@click.option("--event-horizon-days", default=30, type=int)
+@click.option("--held-only", is_flag=True, default=False, help="Only held tickers (no sleeve watchlist).")
+@click.option("--generated-by", default="perplexity", help="Hint written into the prompt's generated_by.")
+@click.option("--output-dir", default=None, help="Where to write the prompt (default: output/prompts).")
+def catalyst_prompt(as_of_text, snapshot_path, universe_path, event_horizon_days,
+                    held_only, generated_by, output_dir):
+    """Emit a structured daily news/catalyst research prompt (paste into an external LLM)."""
+    settings, _ctx = _load_config()
+    tracker = PortfolioTracker(snapshots_dir=settings.get("snapshots_dir", "data/portfolio_snapshots"))
+    try:
+        snapshot = tracker.load_snapshot(snapshot_path) if snapshot_path else tracker.load_latest_snapshot()
+    except FileNotFoundError:
+        snapshot = None
+    if snapshot is None:
+        click.secho("No snapshot available. Run `sync` / `sync-bundle` first.", fg="red")
+        sys.exit(1)
+
+    as_of = datetime.strptime(as_of_text, "%Y-%m-%d").date() if as_of_text else snapshot.timestamp.date()
+    try:
+        _settings, sleeves = load_sleeve_universe(universe_path)
+    except (FileNotFoundError, ValueError, KeyError):
+        sleeves = []
+
+    held_set = {p.ticker.upper() for p in snapshot.positions}
+    held = [(p.ticker.upper(), p.weight_pct, p.current_price) for p in snapshot.positions]
+    if held_only:
+        watchlist = []
+    else:
+        watchlist = sorted(known_tickers(sleeves, snapshot) - held_set)
+
+    horizon_end = as_of + timedelta(days=event_horizon_days)
+    events = []
+    try:
+        for ev in load_event_calendar("config/event_calendar.yaml"):
+            if as_of <= ev.event_date <= horizon_end:
+                events.append((ev.event_date.isoformat(), ev.label, ev.scope))
+    except Exception:  # noqa: BLE001 - calendar is optional context
+        events = []
+
+    text = generate_catalyst_prompt(
+        as_of=as_of, held=held, watchlist=watchlist, events=events,
+        generated_by_hint=generated_by,
+    )
+    out_dir = Path(output_dir or settings.get("output_dir", "output/prompts"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"catalyst_research_{as_of.isoformat()}.txt"
+    out_path.write_text(text, encoding="utf-8")
+    click.echo(f"Catalyst research prompt for {as_of.isoformat()} ({len(held)} held, "
+               f"{len(watchlist)} watchlist, {len(events)} events):")
+    click.echo(f"  {out_path}")
+    click.echo("Paste it into Perplexity / Claude / ChatGPT, then run "
+               "`catalyst-ingest --date " + as_of.isoformat() + " --file <pasted.txt>`.")
 
 
 if __name__ == "__main__":

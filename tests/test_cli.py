@@ -372,3 +372,47 @@ def test_options_analyze_rejects_naked_call(monkeypatch, tmp_path):
     )
     assert result.exit_code == 0
     assert "Level-2 violations" in result.output or "REJECTED" in result.output
+
+
+def test_catalyst_prompt_writes_file(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+    from main import cli
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        "catalyst-prompt", "--date", "2026-06-12",
+        "--output-dir", str(tmp_path),
+        "--held-only",
+    ])
+    assert result.exit_code in (0, 1)
+    if result.exit_code == 0:
+        written = list(tmp_path.glob("catalyst_research_*.txt"))
+        assert written, "expected a catalyst_research_*.txt file"
+        body = written[0].read_text(encoding="utf-8")
+        assert "items:" in body and "direction:" in body
+
+
+def test_catalyst_prompt_with_snapshot(monkeypatch, tmp_path):
+    """Success path: sync a snapshot first, then run catalyst-prompt and assert file written."""
+    runner = CliRunner()
+    settings = _make_settings(tmp_path)
+    csv_path = _write_csv(tmp_path)
+
+    monkeypatch.setattr(
+        main_module,
+        "_load_config",
+        lambda: (settings, PersistentContext()),
+    )
+
+    sync_result = runner.invoke(cli, ["sync", "-i", str(csv_path)])
+    assert sync_result.exit_code == 0
+
+    result = runner.invoke(cli, [
+        "catalyst-prompt", "--date", "2026-06-12",
+        "--output-dir", str(tmp_path / "prompts"),
+        "--held-only",
+    ])
+    assert result.exit_code == 0
+    written = list((tmp_path / "prompts").glob("catalyst_research_*.txt"))
+    assert written, "expected a catalyst_research_*.txt file"
+    body = written[0].read_text(encoding="utf-8")
+    assert "items:" in body and "direction:" in body
