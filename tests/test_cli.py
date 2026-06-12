@@ -399,3 +399,34 @@ def test_catalyst_prompt_with_snapshot(monkeypatch, tmp_path):
     assert written, "expected a catalyst_research_*.txt file"
     body = written[0].read_text(encoding="utf-8")
     assert "items:" in body and "direction:" in body
+
+
+def test_catalyst_ingest_round_trip(tmp_path):
+    runner = CliRunner()
+    paste = tmp_path / "pasted.txt"
+    paste.write_text(
+        "as_of: 2026-06-12\n"
+        "generated_by: perplexity\n"
+        "items:\n"
+        "  - {ticker: NVDA, direction: bull, summary: order}\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(cli, [
+        "catalyst-ingest", "--date", "2026-06-12",
+        "--file", str(paste), "--data-dir", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    out = tmp_path / "catalysts" / "catalyst-2026-06-12.yaml"
+    assert out.exists()
+    assert "NVDA" in out.read_text(encoding="utf-8")
+
+
+def test_catalyst_ingest_bad_paste_exits_nonzero(tmp_path):
+    runner = CliRunner()
+    paste = tmp_path / "bad.txt"
+    paste.write_text("items:\n  - {direction: bull, summary: no ticker}\n", encoding="utf-8")
+    result = runner.invoke(cli, [
+        "catalyst-ingest", "--date", "2026-06-12",
+        "--file", str(paste), "--data-dir", str(tmp_path),
+    ])
+    assert result.exit_code != 0

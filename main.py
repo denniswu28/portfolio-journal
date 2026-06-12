@@ -20,6 +20,7 @@ from pathlib import Path
 
 import click
 import pandas as pd
+import yaml
 from tabulate import tabulate
 
 # ── PATH SETUP ────────────────────────────────────────────────────────────────
@@ -107,6 +108,7 @@ from src.trade_log.journal import JournalStore
 from src.trade_log.logger import TradeLogger
 from src.trade_log.option_logger import OptionTradeLogger
 from src.utils.config_loader import load_persistent_context, load_settings
+from src.advisory.catalysts import parse_catalyst_paste, CatalystValidationError
 from src.advisory.gating import options_gate_status
 from src.advisory.models import OptionAdvisorySummary
 from src.advisory.orchestrator import build_advisory_run, known_tickers
@@ -2114,6 +2116,45 @@ def catalyst_prompt(as_of_text, snapshot_path, universe_path, event_horizon_days
     click.echo(f"  {out_path}")
     click.echo("Paste it into Perplexity / Claude / ChatGPT, then run "
                "`catalyst-ingest --date " + as_of.isoformat() + " --file <pasted.txt>`.")
+
+
+@cli.command("catalyst-ingest")
+@click.option("--date", "as_of_text", required=True, help="Brief date YYYY-MM-DD.")
+@click.option("--file", "in_file", default=None, help="File with the pasted YAML (else read stdin).")
+@click.option("--stdin", "use_stdin", is_flag=True, default=False, help="Read the paste from stdin.")
+@click.option("--data-dir", default="data")
+def catalyst_ingest(as_of_text, in_file, use_stdin, data_dir):
+    """Validate a pasted catalyst brief and store data/catalysts/catalyst-<date>.yaml."""
+    as_of = datetime.strptime(as_of_text, "%Y-%m-%d").date()
+    if in_file:
+        text = Path(in_file).read_text(encoding="utf-8")
+    elif use_stdin or not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        click.secho("Provide --file PATH or pipe the paste via --stdin.", fg="red")
+        sys.exit(1)
+
+    try:
+        ctx, warnings = parse_catalyst_paste(text)
+    except CatalystValidationError as error:
+        click.secho(f"Catalyst paste rejected: {error}", fg="red")
+        sys.exit(1)
+
+    payload = {
+        "as_of": ctx.catalyst_date or as_of.isoformat(),
+        "generated_by": ctx.generated_by,
+        "macro": [m.to_dict() for m in ctx.macro],
+        "items": [i.to_dict() for i in ctx.items],
+        "freeform_notes": ctx.freeform_notes,
+    }
+    cat_dir = Path(data_dir) / "catalysts"
+    cat_dir.mkdir(parents=True, exist_ok=True)
+    out_path = cat_dir / f"catalyst-{as_of.isoformat()}.yaml"
+    out_path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=False), encoding="utf-8")
+
+    click.echo(f"Stored {out_path} ({len(ctx.items)} items, {len(ctx.macro)} macro).")
+    for w in warnings:
+        click.secho(f"  warning: {w}", fg="yellow")
 
 
 if __name__ == "__main__":
