@@ -18,8 +18,8 @@ def test_prompt_lists_tickers_events_and_schema():
     # Schema instructions present (must request the exact YAML keys)
     for key in ("as_of:", "items:", "direction:", "summary:", "bull | bear | neutral"):
         assert key in text
-    # ASCII-only (Windows-safe)
-    assert text.encode("ascii", errors="strict")
+    # ASCII-only (Windows-safe) -- isascii() returns False cleanly, no exception
+    assert text.isascii(), "Rendered prompt must be ASCII-only (Windows-safe)"
 
 
 def test_prompt_handles_no_events():
@@ -29,3 +29,5 @@ def test_prompt_handles_no_events():
     )
     assert "NVDA" in text
     assert "No calendar events" in text
+    assert "items:" in text   # schema block still present on the no-events branch
+    assert text.isascii(), "Rendered prompt must be ASCII-only (Windows-safe)"
