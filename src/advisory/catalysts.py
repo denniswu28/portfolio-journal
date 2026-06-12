@@ -105,7 +105,10 @@ def parse_catalyst_paste(text: str) -> Tuple[CatalystContext, List[str]]:
     usable (no valid items AND no valid macro) is found.
     """
     warnings: List[str] = []
-    data = yaml.safe_load(_strip_fences(text)) or {}
+    try:
+        data = yaml.safe_load(_strip_fences(text)) or {}
+    except yaml.YAMLError as exc:
+        raise CatalystValidationError(f"Catalyst paste is not valid YAML: {exc}") from exc
     if isinstance(data, list):           # bare items list
         data = {"items": data}
     if not isinstance(data, dict):

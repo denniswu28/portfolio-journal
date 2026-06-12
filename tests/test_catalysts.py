@@ -74,6 +74,13 @@ def test_parse_nothing_usable_raises():
         parse_catalyst_paste("items:\n  - direction: bull\n    summary: no ticker\n")
 
 
+def test_parse_malformed_yaml_raises_clean_error():
+    # A syntactically broken paste must surface CatalystValidationError, not a raw
+    # yaml.YAMLError traceback (tolerant-parsing contract for the human-paste workflow).
+    with pytest.raises(CatalystValidationError):
+        parse_catalyst_paste("items:\n  - {ticker: NVDA, direction: bull, summary: 'unclosed\n")
+
+
 def test_catalyst_models_defaults_and_to_dict():
     item = CatalystItem(ticker="NVDA", direction="bull", summary="new order")
     assert item.event_date is None and item.confidence == ""
