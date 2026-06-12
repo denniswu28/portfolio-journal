@@ -12,8 +12,8 @@ investment_horizon: "3 months"
 
 constraints:
   - "No single equity or equity ETF position > 10% of portfolio; gold and precious-metal hedges are exempt from this equity cap when documented"
-  - "Keep 5-15% cash reserve"
-  - "No options"
+  - "Target allocation roughly 80% long (stocks/ETFs/funds), 10% options, 10% cash, applied after setting aside any near-term planned cash withdrawals"
+  - "Options are permitted in the main Fidelity account, sized to about a 10% options sleeve; prefer defined-risk debit structures with documented max loss, and document margin, assignment, and exit risk for any premium-selling"
 
 rules:
   - "Take profits when unrealized gain exceeds 50%"
@@ -24,6 +24,16 @@ rules:
   - "Do not use broad index inverse ETFs for AI-loser hedges when the plan expects QQQ/compute beta to rise; METD is the default META hedge, and direct individual stock shorts require documented borrow, margin, locate/recall, liquidity, sizing, and exit rules"
 
 benchmark: "SPY"
+
+# Options gating: option ideas are shown but labeled "advisory only — not executable"
+# until Level-2 privilege clears AND the position/account is at/above the minimum.
+# Flip options_enabled to true (or list a cleared account in enabled_accounts) to make
+# fully-specified option tickets executable — no code change required.
+options_gating:
+  options_enabled: false
+  options_min_account_value: 10000
+  options_account_label: "main cash account (Level-2 application pending)"
+  enabled_accounts: []
 
 notes: >
   Use this information to make disciplined decisions for a real brokerage

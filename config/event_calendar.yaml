@@ -1,0 +1,27 @@
+# Event calendar for the options monitor.
+#
+# Events enter the decision system only through this file and the dated thesis
+# markdown. The monitor flags open option positions for size reduction or defensive
+# rolls when a catalyst falls inside the alert horizon. Nothing here auto-executes.
+#
+# Each event:
+#   date:  YYYY-MM-DD
+#   label: short description
+#   scope: "market" (affects everything) or a ticker symbol (e.g. MU)
+
+events:
+  - date: 2026-06-11
+    label: World Cup opens; global volume may cool into a sideways tape
+    scope: market
+  - date: 2026-06-12
+    label: SpaceX IPO (potential liquidity vacuum for large caps)
+    scope: market
+  - date: 2026-06-17
+    label: June FOMC decision; QT-on-the-agenda risk per the May 31 thesis
+    scope: market
+  - date: 2026-06-25
+    label: MU quarterly earnings (confirm exact date) — reduce put-selling size
+    scope: MU
+  - date: 2026-07-30
+    label: SNDK quarterly earnings (confirm exact date) — defend/roll short puts
+    scope: SNDK
