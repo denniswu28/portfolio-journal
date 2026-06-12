@@ -101,6 +101,7 @@ class PortfolioTracker:
                     unrealized_pnl_pct=unrealized_pnl_pct,
                     day_change=raw_pos.day_change,
                     day_change_pct=raw_pos.day_change_pct,
+                    basket_name=raw_pos.basket_name,
                 )
             )
 

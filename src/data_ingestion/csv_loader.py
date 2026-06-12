@@ -80,6 +80,7 @@ FIELD_ALIASES = {
         "totalgainlosspercentage",
     },
     "position_type": {"type", "securitytype", "assettype"},
+    "basket_name": {"basketname", "basket"},
 }
 
 
@@ -224,6 +225,7 @@ class CSVLoader:
             gain_loss = _get_numeric_field(row, normalized_columns, "gain_loss")
             gain_loss_pct = _get_numeric_field(row, normalized_columns, "gain_loss_pct")
             position_type = _get_text_field(row, normalized_columns, "position_type")
+            basket_name = _get_text_field(row, normalized_columns, "basket_name")
 
             if not ticker and not company_name:
                 continue
@@ -270,6 +272,7 @@ class CSVLoader:
                     market_value=market_value,
                     gain_loss=gain_loss,
                     gain_loss_pct=gain_loss_pct,
+                    basket_name=basket_name or None,
                 )
             )
             today_change_total += day_change
@@ -331,6 +334,7 @@ def _aggregate_positions(positions: list[RawPosition]) -> list[RawPosition]:
             market_value=total_market_value,
             gain_loss=total_gain_loss,
             gain_loss_pct=(total_gain_loss / total_cost_basis * 100) if total_cost_basis else 0.0,
+            basket_name=existing.basket_name or position.basket_name,
         )
 
     return sorted(grouped.values(), key=lambda p: p.ticker)

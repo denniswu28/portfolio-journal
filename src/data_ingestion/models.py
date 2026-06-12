@@ -33,6 +33,7 @@ class RawPosition(BaseModel):
     market_value: float
     gain_loss: float = 0.0
     gain_loss_pct: float = 0.0
+    basket_name: Optional[str] = None
 
     @field_validator("ticker")
     @classmethod
@@ -171,6 +172,7 @@ class Position(BaseModel):
     weight_pct: float = 0.0
     day_change: float = 0.0
     day_change_pct: float = 0.0
+    basket_name: Optional[str] = None
 
     def model_post_init(self, __context) -> None:
         if not self.market_value:
@@ -289,6 +291,20 @@ class JournalEntry(BaseModel):
 
 # ── PERSISTENT CONTEXT MODEL ─────────────────────────────────────────────────
 
+class OptionsGating(BaseModel):
+    """Whether option recommendations may be presented as executable.
+
+    The main cash account's Level-2 privilege is pending and an option order needs
+    the position/account >= ``options_min_account_value``. When gating fails, option
+    ideas are shown but labeled "advisory only — not executable" (label, don't hide).
+    """
+
+    options_enabled: bool = False
+    options_min_account_value: float = 10000.0
+    options_account_label: str = "main account (Level-2 application pending)"
+    enabled_accounts: List[str] = Field(default_factory=list)
+
+
 class PersistentContext(BaseModel):
     """User-defined investment strategy and constraints loaded from YAML."""
 
@@ -299,6 +315,7 @@ class PersistentContext(BaseModel):
     rules: List[str] = Field(default_factory=list)
     benchmark: str = "SPY"
     notes: str = ""
+    options_gating: OptionsGating = Field(default_factory=OptionsGating)
 
 
 # ── PERFORMANCE METRICS MODEL ────────────────────────────────────────────────
