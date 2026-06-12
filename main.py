@@ -2095,7 +2095,7 @@ def catalyst_prompt(as_of_text, snapshot_path, universe_path, event_horizon_days
     horizon_end = as_of + timedelta(days=event_horizon_days)
     events = []
     try:
-        for ev in load_event_calendar("config/event_calendar.yaml"):
+        for ev in load_event_calendar(settings.get("event_calendar_file", "config/event_calendar.yaml")):
             if as_of <= ev.event_date <= horizon_end:
                 events.append((ev.event_date.isoformat(), ev.label, ev.scope))
     except Exception:  # noqa: BLE001 - calendar is optional context
