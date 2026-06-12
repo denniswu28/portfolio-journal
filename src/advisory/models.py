@@ -77,6 +77,54 @@ class ThesisContext:
 
 
 @dataclass
+class CatalystItem:
+    """One per-ticker catalyst from the daily news bridge (display/narrative only)."""
+
+    ticker: str = ""
+    direction: str = "neutral"   # bull | bear | neutral
+    summary: str = ""
+    event_date: Optional[str] = None
+    confidence: str = ""          # "" | low | med | high (the external LLM's own claim)
+    source_url: Optional[str] = None
+    notes: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class MacroCatalyst:
+    """One market-wide catalyst from the daily news bridge."""
+
+    direction: str = "neutral"
+    summary: str = ""
+    event_date: Optional[str] = None
+    source_url: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class CatalystContext:
+    """Loaded daily catalyst brief -- the daily-news analog of ThesisContext."""
+
+    path: Optional[str] = None
+    catalyst_date: Optional[str] = None
+    generated_by: str = ""
+    items: List["CatalystItem"] = field(default_factory=list)
+    macro: List["MacroCatalyst"] = field(default_factory=list)
+    freeform_notes: str = ""
+    near_term: List["CatalystItem"] = field(default_factory=list)
+    digest: str = ""
+    stale_vs_snapshot: bool = False
+    found: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
 class AdvisoryRun:
     """The full daily advisory packet (rendered to markdown + JSON)."""
 
@@ -90,6 +138,7 @@ class AdvisoryRun:
     rule_alerts: List[RuleAlert] = field(default_factory=list)
     basket_actions: List[BasketActionCandidate] = field(default_factory=list)
     thesis: ThesisContext = field(default_factory=ThesisContext)
+    catalysts: CatalystContext = field(default_factory=CatalystContext)
     events: List[dict] = field(default_factory=list)
     options: Optional[OptionAdvisorySummary] = None
     metrics: dict = field(default_factory=dict)
