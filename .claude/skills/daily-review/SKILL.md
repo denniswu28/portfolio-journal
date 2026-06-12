@@ -68,6 +68,26 @@ snapshot before anything else is valid. Run the pipeline in order:
 Use `sync` (single `--input-file`) instead of `sync-bundle` only for a one-off CSV
 that is not part of a dated bundle.
 
+## Step 0 (optional) - refresh the daily catalyst brief (news bridge)
+
+The daily news/catalyst input is human-curated through an external LLM, then ingested as
+a structured file - nothing scrapes the web (AGENTS.md S3). Catalysts are context only;
+they never move deterministic numbers.
+
+```powershell
+# 1. Emit a structured research prompt grounded in today's holdings + watchlist + events
+& .\.venv\Scripts\python.exe main.py catalyst-prompt --date <YYYY-MM-DD>
+
+# 2. Paste output/prompts/catalyst_research_<date>.txt into Perplexity / Claude / ChatGPT
+#    (live web), copy the YAML answer back.
+
+# 3. Validate + store it as data/catalysts/catalyst-<date>.yaml
+& .\.venv\Scripts\python.exe main.py catalyst-ingest --date <date> --file <pasted.txt>
+```
+
+`daily-advisory` then picks up the latest catalyst file automatically and adds a
+"Daily catalysts" section. Use `--no-catalysts` to skip, or `--catalyst-file` to override.
+
 ## When the review surfaces work
 
 The advisory flags issues; acting on them routes through the dedicated workflows —
