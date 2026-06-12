@@ -15,19 +15,19 @@ sleeves:
     proxy: MU
     category: Boist core
     role: DRAM, NAND, HBM, storage, and memory-pricing rerating
-    holdings: [MU, SNDK, WDC, STX, SIMO]
+    holdings: [MU, SNDK, DRAM, WDC, STX, SIMO]
     min_weight_pct: 8.0
     max_weight_pct: 15.0
-    notes: Primary Boist scarcity sleeve; agentic compute expands memory, storage, and bandwidth demand.
+    notes: Primary Boist scarcity sleeve; agentic compute expands memory, storage, and bandwidth demand. DRAM ETF can be used as the concentrated global memory basket anchor when single-name memory positions are being consolidated.
 
   - name: Boist CPU foundry and packaging
     proxy: SOXX
     category: Boist core
     role: CPU mix shift, foundry capacity, advanced packaging, and semi equipment
-    holdings: [SOXX, INTC, AMD, TSM, ASML, AMAT, LRCX, ARM]
+    holdings: [SOXX, INTC, AMD, TSM, ASML, KLAC, ONTO, AMKR, ARM, FORM, AMAT, LRCX]
     min_weight_pct: 8.0
     max_weight_pct: 16.0
-    notes: Keeps the CPU/foundry/packaging thesis central while avoiding a single-stock proxy.
+    notes: Ten-position basket (expanded 2026-05-08) for CPU/foundry/advanced-packaging thesis. TSM (foundry anchor), INTC (CPU/IFS), AMD (x86 CPU), SOXX (reduced breadth ETF), ASML (litho gate), KLAC (process control/yield), ONTO (advanced packaging inspection/metrology), AMKR (U.S. OSAT), ARM (CPU royalty, satellite), FORM (probe/test yield, satellite). AMAT and LRCX are watchlist; SOXX provides partial WFE coverage.
 
   - name: Boist semiconductor beta
     proxy: SMH
