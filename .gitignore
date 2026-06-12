@@ -207,7 +207,14 @@ marimo/_lsp/
 __marimo__/
 
 # Portfolio tracker runtime data
-data/portfolio_snapshots/*.json
-data/trade_history.json
-data/rationale_log.json
+data/
 output/prompts/*.txt
+output/reports/
+
+# Sensitive data files
+*.csv
+*.env
+*.env.*
+
+# Keep directory scaffolding even inside ignored dirs
+!**/.gitkeep

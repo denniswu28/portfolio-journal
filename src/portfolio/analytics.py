@@ -10,6 +10,7 @@ Sections:
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from src.data_ingestion.models import PerformanceMetrics, PortfolioSnapshot, Position, Trade
@@ -31,7 +32,7 @@ def calculate_avg_cost_basis(trades: List[Trade], ticker: str) -> float:
     Returns:
         Average cost per share, or 0.0 if no BUY trades found.
     """
-    total_shares = 0
+    total_shares = 0.0
     total_cost = 0.0
 
     for trade in sorted(trades, key=lambda t: t.timestamp):
@@ -81,7 +82,7 @@ def realized_pnl(trades: List[Trade]) -> float:
     """
     # Group BUY trades per ticker to track running avg cost
     avg_costs: Dict[str, float] = {}
-    shares_held: Dict[str, int] = {}
+    shares_held: Dict[str, float] = {}
     total_realized = 0.0
 
     for trade in sorted(trades, key=lambda t: t.timestamp):
@@ -136,8 +137,6 @@ def compute_metrics(
     snapshots: List[PortfolioSnapshot],
     trades: Optional[List[Trade]] = None,
     risk_free_rate: float = 0.05,
-    benchmark_returns: Optional[List[float]] = None,
-    benchmark_ticker: str = "SPY",
 ) -> PerformanceMetrics:
     """
     Compute portfolio performance metrics from a time series of snapshots.
@@ -146,19 +145,14 @@ def compute_metrics(
     - cumulative_return_pct
     - daily_returns (list of % changes between consecutive snapshots)
     - sharpe_ratio  (annualized, using provided risk_free_rate)
-    - max_drawdown_pct, max_drawdown_date, current_drawdown_pct
-    - alpha_annualized_pct, beta  (when benchmark_returns provided)
-    - benchmark_cumulative_return_pct (when benchmark_returns provided)
+    - max_drawdown_pct
     - win_rate, avg_win_pct, avg_loss_pct (from closed trades)
     - concentration_top3_pct
 
     Args:
-        snapshots:          Time-ordered list of PortfolioSnapshot objects.
-        trades:             Optional trade history for win/loss stats.
-        risk_free_rate:     Annual risk-free rate (default 5%).
-        benchmark_returns:  Interval returns for the benchmark aligned to
-                            snapshot intervals (len == len(snapshots) - 1).
-        benchmark_ticker:   Label stored on the metrics object (default "SPY").
+        snapshots: Time-ordered list of PortfolioSnapshot objects.
+        trades: Optional trade history for win/loss stats.
+        risk_free_rate: Annual risk-free rate (default 5%).
 
     Returns:
         A PerformanceMetrics object.
@@ -166,6 +160,7 @@ def compute_metrics(
     if not snapshots:
         return PerformanceMetrics()
 
+    snapshots = sorted(snapshots, key=lambda s: s.timestamp)
     values = [s.total_portfolio_value for s in snapshots]
 
     # Cumulative return
@@ -173,7 +168,7 @@ def compute_metrics(
         ((values[-1] / values[0]) - 1) * 100 if values[0] else 0.0
     )
 
-    # Interval returns
+    # Daily returns
     daily_returns = []
     for i in range(1, len(values)):
         if values[i - 1]:
@@ -181,11 +176,18 @@ def compute_metrics(
 
     # Sharpe ratio (annualized, assuming daily snapshots)
     sharpe_ratio = _compute_sharpe(daily_returns, risk_free_rate)
+    annualized_return_pct = _compute_annualized_return(snapshots)
+    annualized_volatility_pct = _compute_annualized_volatility(daily_returns)
 
-    # Drawdown details
-    max_drawdown_pct, max_drawdown_date, current_drawdown_pct = _compute_drawdown_detail(
-        values, snapshots
-    )
+    # Max drawdown
+    (
+        max_drawdown_pct,
+        max_drawdown_start,
+        max_drawdown_end,
+        max_drawdown_peak_value,
+        max_drawdown_trough_value,
+    ) = _compute_max_drawdown_details(snapshots)
+    calmar_ratio = _compute_calmar_ratio(annualized_return_pct, max_drawdown_pct)
 
     # Win/loss stats from trade history
     win_rate_pct, avg_win_pct, avg_loss_pct, winning, losing = _compute_trade_stats(
@@ -195,28 +197,18 @@ def compute_metrics(
     # Concentration: weight of top 3 holdings in latest snapshot
     concentration_top3_pct = _compute_concentration(snapshots[-1], top_n=3)
 
-    # Benchmark-relative metrics
-    alpha_annualized_pct: Optional[float] = None
-    beta: Optional[float] = None
-    benchmark_cumulative_return_pct: Optional[float] = None
-
-    if benchmark_returns and len(benchmark_returns) == len(daily_returns):
-        alpha_annualized_pct, beta = _compute_alpha_beta(
-            daily_returns, benchmark_returns, risk_free_rate
-        )
-        # Compound the benchmark interval returns into a cumulative figure
-        compound = 1.0
-        for r in benchmark_returns:
-            compound *= 1 + r / 100
-        benchmark_cumulative_return_pct = round((compound - 1) * 100, 4)
-
     return PerformanceMetrics(
         cumulative_return_pct=cumulative_return_pct,
+        annualized_return_pct=annualized_return_pct,
+        annualized_volatility_pct=annualized_volatility_pct,
         daily_returns=daily_returns,
         sharpe_ratio=sharpe_ratio,
+        calmar_ratio=calmar_ratio,
         max_drawdown_pct=max_drawdown_pct,
-        max_drawdown_date=max_drawdown_date,
-        current_drawdown_pct=current_drawdown_pct,
+        max_drawdown_start=max_drawdown_start,
+        max_drawdown_end=max_drawdown_end,
+        max_drawdown_peak_value=max_drawdown_peak_value,
+        max_drawdown_trough_value=max_drawdown_trough_value,
         win_rate_pct=win_rate_pct,
         avg_win_pct=avg_win_pct,
         avg_loss_pct=avg_loss_pct,
@@ -224,10 +216,6 @@ def compute_metrics(
         total_trades=winning + losing,
         winning_trades=winning,
         losing_trades=losing,
-        benchmark_ticker=benchmark_ticker,
-        benchmark_cumulative_return_pct=benchmark_cumulative_return_pct,
-        alpha_annualized_pct=alpha_annualized_pct,
-        beta=beta,
     )
 
 
@@ -251,8 +239,51 @@ def _compute_sharpe(
     return round(sharpe, 4)
 
 
+def _compute_annualized_return(snapshots: List[PortfolioSnapshot]) -> float:
+    """Annualized return/CAGR from first to last snapshot."""
+    if len(snapshots) < 2:
+        return 0.0
+    start_value = snapshots[0].total_portfolio_value
+    end_value = snapshots[-1].total_portfolio_value
+    if start_value <= 0 or end_value <= 0:
+        return 0.0
+    years = _elapsed_years(snapshots[0].timestamp, snapshots[-1].timestamp, len(snapshots))
+    if years <= 0:
+        return 0.0
+    annualized = ((end_value / start_value) ** (1 / years) - 1) * 100
+    return round(annualized, 4)
+
+
+def _compute_annualized_volatility(daily_returns: List[float]) -> float:
+    """Annualized volatility from period returns expressed as percentages."""
+    if len(daily_returns) < 2:
+        return 0.0
+    n = len(daily_returns)
+    mean_r = sum(daily_returns) / n
+    variance = sum((r - mean_r) ** 2 for r in daily_returns) / (n - 1)
+    std_dev = math.sqrt(variance) if variance > 0 else 0.0
+    return round(std_dev * math.sqrt(252), 4)
+
+
+def _compute_calmar_ratio(
+    annualized_return_pct: float, max_drawdown_pct: float
+) -> Optional[float]:
+    """Calmar ratio: annualized return divided by absolute max drawdown."""
+    if max_drawdown_pct <= 0:
+        return None
+    return round(annualized_return_pct / max_drawdown_pct, 4)
+
+
+def _elapsed_years(start: datetime, end: datetime, snapshot_count: int) -> float:
+    """Return elapsed years, falling back to daily periods for same-time snapshots."""
+    elapsed_days = (end - start).total_seconds() / 86400
+    if elapsed_days > 0:
+        return elapsed_days / 365.25
+    return max(snapshot_count - 1, 0) / 252
+
+
 def _compute_max_drawdown(values: List[float]) -> float:
-    """Maximum peak-to-trough drawdown as a positive percentage (legacy helper)."""
+    """Maximum peak-to-trough drawdown as a positive percentage."""
     if not values:
         return 0.0
     peak = values[0]
@@ -266,84 +297,40 @@ def _compute_max_drawdown(values: List[float]) -> float:
     return round(max_dd, 4)
 
 
-def _compute_drawdown_detail(
-    values: List[float],
+def _compute_max_drawdown_details(
     snapshots: List[PortfolioSnapshot],
-) -> Tuple[float, Optional[str], float]:
-    """
-    Compute max and current drawdown with the date of the max-drawdown trough.
+) -> Tuple[float, Optional[datetime], Optional[datetime], float, float]:
+    """Maximum drawdown with peak/trough timestamps and values."""
+    if not snapshots:
+        return 0.0, None, None, 0.0, 0.0
 
-    Returns:
-        (max_drawdown_pct, max_drawdown_date_str, current_drawdown_pct)
-        All drawdown values are positive percentages.
-    """
-    if not values:
-        return 0.0, None, 0.0
+    peak_snapshot = snapshots[0]
+    max_drawdown_pct = 0.0
+    max_drawdown_start: Optional[datetime] = None
+    max_drawdown_end: Optional[datetime] = None
+    max_drawdown_peak_value = snapshots[0].total_portfolio_value
+    max_drawdown_trough_value = snapshots[0].total_portfolio_value
 
-    peak = values[0]
-    max_dd = 0.0
-    max_dd_date: Optional[str] = None
+    for snapshot in snapshots:
+        value = snapshot.total_portfolio_value
+        if value > peak_snapshot.total_portfolio_value:
+            peak_snapshot = snapshot
+        peak_value = peak_snapshot.total_portfolio_value
+        drawdown_pct = (peak_value - value) / peak_value * 100 if peak_value else 0.0
+        if drawdown_pct > max_drawdown_pct:
+            max_drawdown_pct = drawdown_pct
+            max_drawdown_start = peak_snapshot.timestamp
+            max_drawdown_end = snapshot.timestamp
+            max_drawdown_peak_value = peak_value
+            max_drawdown_trough_value = value
 
-    for i, v in enumerate(values):
-        if v > peak:
-            peak = v
-        dd = (peak - v) / peak * 100 if peak else 0.0
-        if dd > max_dd:
-            max_dd = dd
-            max_dd_date = snapshots[i].timestamp.strftime("%Y-%m-%d")
-
-    # Current drawdown: distance from the all-time peak to the latest value
-    all_time_peak = max(values)
-    current_dd = (
-        (all_time_peak - values[-1]) / all_time_peak * 100
-        if all_time_peak else 0.0
+    return (
+        round(max_drawdown_pct, 4),
+        max_drawdown_start,
+        max_drawdown_end,
+        max_drawdown_peak_value,
+        max_drawdown_trough_value,
     )
-
-    return round(max_dd, 4), max_dd_date, round(current_dd, 4)
-
-
-def _compute_alpha_beta(
-    portfolio_returns: List[float],
-    benchmark_returns: List[float],
-    annual_risk_free_rate: float = 0.05,
-) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Compute annualized alpha and beta via OLS regression of portfolio returns
-    on benchmark returns.
-
-    Both return series are in percent (e.g. 1.5 means +1.5%).
-    Requires at least 3 aligned data points.
-
-    Returns:
-        (alpha_annualized_pct, beta)  or  (None, None) if insufficient data.
-    """
-    n = len(portfolio_returns)
-    if n < 3 or len(benchmark_returns) != n:
-        return None, None
-
-    # OLS: portfolio_return = alpha_interval + beta * benchmark_return
-    mean_b = sum(benchmark_returns) / n
-    mean_p = sum(portfolio_returns) / n
-
-    cov = sum(
-        (benchmark_returns[i] - mean_b) * (portfolio_returns[i] - mean_p)
-        for i in range(n)
-    )
-    var_b = sum((b - mean_b) ** 2 for b in benchmark_returns)
-
-    if var_b == 0:
-        return None, None
-
-    beta = cov / var_b
-
-    # Interval alpha (average excess return not explained by benchmark)
-    daily_rf = (annual_risk_free_rate / 252) * 100
-    alpha_interval = mean_p - (daily_rf + beta * (mean_b - daily_rf))
-
-    # Annualise: assume 252 trading intervals per year
-    alpha_annualized_pct = alpha_interval * 252
-
-    return round(alpha_annualized_pct, 4), round(beta, 4)
 
 
 def _compute_trade_stats(
@@ -356,7 +343,7 @@ def _compute_trade_stats(
         (win_rate_pct, avg_win_pct, avg_loss_pct, winning_count, losing_count)
     """
     avg_costs: Dict[str, float] = {}
-    shares_held: Dict[str, int] = {}
+    shares_held: Dict[str, float] = {}
     wins: List[float] = []
     losses: List[float] = []
 

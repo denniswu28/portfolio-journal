@@ -5,8 +5,8 @@ data_dir: "data"
 snapshots_dir: "data/portfolio_snapshots"
 trade_history_file: "data/trade_history.json"
 rationale_log_file: "data/rationale_log.json"
+journal_file: "data/journal.json"
 output_dir: "output/prompts"
-reports_dir: "output/reports"
 
 # Market data settings
 market_data_provider: "yfinance"

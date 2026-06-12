@@ -1,150 +1,144 @@
-"""Tests for the portfolio reporting module."""
+"""Tests for portfolio report exports and plots."""
 
-import pytest
-from datetime import datetime
-from pathlib import Path
+from datetime import date, datetime, timedelta
 
-from src.data_ingestion.models import PerformanceMetrics, PortfolioSnapshot, Position
-from src.portfolio.reporting import build_report, save_report
+from src.data_ingestion.models import AssetAllocationRow, PeriodicReturnRow
+from src.portfolio.analytics import compute_metrics
+from src.portfolio.plots import (
+    plot_asset_allocation,
+    plot_position_weights,
+    plot_return_drawdown,
+    plot_unrealized_pnl,
+)
+from src.portfolio.reporting import (
+    build_return_series,
+    select_latest_snapshot_per_day,
+    write_asset_allocation_summary,
+    write_metrics_summary,
+    write_portfolio_timeseries,
+    write_return_series,
+)
+from tests.test_analytics import make_position, make_snapshot
 
 
-def _make_position(ticker="AAPL", shares=100, avg_cost=100.0, price=120.0, weight=60.0):
-    return Position(
-        ticker=ticker,
-        company_name=f"{ticker} Corp",
-        shares=shares,
-        avg_cost_basis=avg_cost,
-        current_price=price,
-        market_value=shares * price,
-        unrealized_pnl=(price - avg_cost) * shares,
-        unrealized_pnl_pct=((price / avg_cost) - 1) * 100,
-        weight_pct=weight,
+def _make_snapshots():
+    base = datetime(2026, 5, 1)
+    return [
+        make_snapshot(
+            100000.0,
+            ts=base,
+            positions=[
+                make_position("AAPL", current_price=120.0, weight=60.0),
+                make_position("MSFT", current_price=90.0, weight=40.0),
+            ],
+        ),
+        make_snapshot(
+            110000.0,
+            ts=base + timedelta(days=1),
+            positions=[
+                make_position("AAPL", current_price=130.0, weight=62.0),
+                make_position("MSFT", current_price=95.0, weight=38.0),
+            ],
+        ),
+        make_snapshot(
+            95000.0,
+            ts=base + timedelta(days=2),
+            positions=[
+                make_position("AAPL", current_price=100.0, weight=55.0),
+                make_position("MSFT", current_price=86.0, weight=45.0),
+            ],
+        ),
+    ]
+
+
+def test_report_spreadsheets_include_core_metrics(tmp_path):
+    snapshots = _make_snapshots()
+    metrics = compute_metrics(snapshots)
+
+    metrics_path = write_metrics_summary(
+        metrics,
+        tmp_path / "metrics_summary.csv",
+        latest_snapshot=snapshots[-1],
+    )
+    timeseries_path = write_portfolio_timeseries(
+        snapshots,
+        tmp_path / "portfolio_timeseries.csv",
     )
 
+    metrics_text = metrics_path.read_text(encoding="utf-8")
+    timeseries_text = timeseries_path.read_text(encoding="utf-8")
 
-def _make_snapshot(value=100_000.0, cash=5_000.0):
-    return PortfolioSnapshot(
-        timestamp=datetime(2024, 4, 1, 9, 30),
-        total_portfolio_value=value,
-        cash=cash,
-        invested_value=value - cash,
-        positions=[
-            _make_position("AAPL", shares=300, weight=36.0),
-            _make_position("MSFT", shares=200, price=250.0, weight=50.0),
-            _make_position("NVDA", shares=50, price=800.0, weight=40.0),
-        ],
-    )
+    assert "sharpe_ratio" in metrics_text
+    assert "calmar_ratio" in metrics_text
+    assert "max_drawdown_pct" in metrics_text
+    assert "annualized_return_pct" in metrics_text
+    assert "portfolio_value" in timeseries_text
+    assert "drawdown_pct" in timeseries_text
 
 
-def _full_metrics():
-    return PerformanceMetrics(
-        cumulative_return_pct=12.5,
-        sharpe_ratio=1.42,
-        max_drawdown_pct=8.3,
-        max_drawdown_date="2024-02-10",
-        current_drawdown_pct=2.1,
-        win_rate_pct=60.0,
-        avg_win_pct=5.5,
-        avg_loss_pct=-3.2,
-        concentration_top3_pct=65.0,
-        total_trades=10,
-        winning_trades=6,
-        losing_trades=4,
-        benchmark_ticker="SPY",
-        benchmark_cumulative_return_pct=7.8,
-        alpha_annualized_pct=3.2,
-        beta=0.88,
-    )
+def test_report_plots_are_written(tmp_path):
+    snapshots = _make_snapshots()
+    latest_snapshot = snapshots[-1]
+
+    paths = [
+        plot_return_drawdown(snapshots, tmp_path / "return_drawdown.png"),
+        plot_unrealized_pnl(latest_snapshot, tmp_path / "unrealized_pnl.png"),
+        plot_position_weights(latest_snapshot, tmp_path / "position_weights.png"),
+    ]
+
+    for path in paths:
+        assert path.exists()
+        assert path.stat().st_size > 0
 
 
-class TestBuildReport:
-    def test_contains_as_of_date(self):
-        snap = _make_snapshot()
-        report = build_report(snap, _full_metrics())
-        assert "2024-04-01" in report
+def test_select_latest_snapshot_per_day():
+    base = datetime(2026, 5, 1)
+    snapshots = [
+        make_snapshot(100000.0, ts=base.replace(hour=9)),
+        make_snapshot(101000.0, ts=base.replace(hour=16)),
+        make_snapshot(103000.0, ts=base + timedelta(days=1)),
+    ]
 
-    def test_contains_cumulative_return(self):
-        snap = _make_snapshot()
-        report = build_report(snap, _full_metrics())
-        assert "12.50" in report
+    daily_snapshots = select_latest_snapshot_per_day(snapshots)
 
-    def test_contains_sharpe(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "1.4200" in report
-
-    def test_contains_alpha(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "3.20" in report
-
-    def test_contains_beta(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "0.8800" in report
-
-    def test_contains_max_drawdown(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "8.30" in report
-        assert "2024-02-10" in report
-
-    def test_contains_current_drawdown(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "2.10" in report
-
-    def test_contains_benchmark_ticker(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "SPY" in report
-
-    def test_na_when_metrics_none(self):
-        metrics = PerformanceMetrics()  # all optional fields are None
-        report = build_report(_make_snapshot(), metrics)
-        assert "N/A" in report
-
-    def test_plain_text_mode(self):
-        report = build_report(_make_snapshot(), _full_metrics(), as_markdown=False)
-        # Should not contain markdown headers
-        assert "# " not in report
-        assert "##" not in report
-
-    def test_markdown_mode_has_headers(self):
-        report = build_report(_make_snapshot(), _full_metrics(), as_markdown=True)
-        assert "# " in report or "##" in report
-
-    def test_top3_holdings_listed(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "AAPL" in report
-        assert "MSFT" in report
-
-    def test_benchmark_return_displayed(self):
-        report = build_report(_make_snapshot(), _full_metrics())
-        assert "7.80" in report
+    assert [snapshot.total_portfolio_value for snapshot in daily_snapshots] == [
+        101000.0,
+        103000.0,
+    ]
 
 
-class TestSaveReport:
-    def test_file_created(self, tmp_path):
-        snap = _make_snapshot()
-        report = build_report(snap, _full_metrics())
-        saved = save_report(report, reports_dir=str(tmp_path))
-        assert saved.exists()
-        assert saved.suffix == ".md"
+def test_supplemental_report_outputs_are_written(tmp_path):
+    rows = [
+        AssetAllocationRow(symbol="AAPL", asset_class="Domestic Stock", current_value=900.0),
+        AssetAllocationRow(symbol="SPAXX", asset_class="Short Term", current_value=100.0),
+    ]
 
-    def test_file_content_matches(self, tmp_path):
-        snap = _make_snapshot()
-        report = build_report(snap, _full_metrics())
-        saved = save_report(report, reports_dir=str(tmp_path))
-        assert saved.read_text(encoding="utf-8") == report
+    summary_path = write_asset_allocation_summary(rows, tmp_path / "asset_allocation_summary.csv")
+    plot_path = plot_asset_allocation(rows, tmp_path / "asset_allocation.png")
 
-    def test_directory_created_if_missing(self, tmp_path):
-        sub = tmp_path / "deep" / "reports"
-        report = build_report(_make_snapshot(), _full_metrics())
-        saved = save_report(report, reports_dir=str(sub))
-        assert saved.exists()
+    summary_text = summary_path.read_text(encoding="utf-8")
+    assert "Domestic Stock" in summary_text
+    assert "weight_pct" in summary_text
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
 
-    def test_custom_suffix(self, tmp_path):
-        report = build_report(_make_snapshot(), _full_metrics())
-        saved = save_report(report, reports_dir=str(tmp_path), suffix="txt")
-        assert saved.suffix == ".txt"
 
-    def test_filename_includes_timestamp(self, tmp_path):
-        as_of = datetime(2024, 4, 1, 9, 30, 0)
-        report = build_report(_make_snapshot(), _full_metrics())
-        saved = save_report(report, reports_dir=str(tmp_path), as_of=as_of)
-        assert "20240401_093000" in saved.name
+def test_return_series_keeps_fidelity_rows_source_labeled(tmp_path):
+    snapshots = _make_snapshots()[:2]
+    periodic_rows = [
+        PeriodicReturnRow(
+            period_end_date=date(2026, 4, 30),
+            return_type="time_weighted",
+            account="Cash Management Z1",
+            one_month_pct=10.46,
+            ytd_pct=9.07,
+            life_pct=7.75,
+        )
+    ]
+
+    rows = build_return_series(snapshots, periodic_rows)
+    path = write_return_series(snapshots, periodic_rows, tmp_path / "return_series.csv")
+
+    assert any(row["source"] == "snapshot" for row in rows)
+    assert any(row["source"] == "fidelity_periodic_returns" for row in rows)
+    assert "fidelity_periodic_returns" in path.read_text(encoding="utf-8")

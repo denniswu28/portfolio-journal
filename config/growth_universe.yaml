@@ -1,0 +1,156 @@
+# Boist-derived core-and-satellite sleeve universe for `python main.py rebalance-weights`.
+# The dominant thesis is agentic AI compute demand: CPU/foundry, memory/storage,
+# semiconductor infrastructure, and electricity. Satellite sleeves should be smaller
+# and directly connected to second-order compute demand.
+# `proxy` is the Yahoo Finance ticker used for historical price optimization.
+# `holdings` maps current portfolio positions and candidate tickers back to sleeves.
+
+settings:
+  cash_target_pct: 10.0
+  risk_free_rate: 0.04
+  min_trade_dollars: 25.0
+
+sleeves:
+  - name: Boist memory and storage shortage
+    proxy: MU
+    category: Boist core
+    role: DRAM, NAND, HBM, storage, and memory-pricing rerating
+    holdings: [MU, SNDK, DRAM, WDC, STX, SIMO]
+    min_weight_pct: 8.0
+    max_weight_pct: 15.0
+    notes: Primary Boist scarcity sleeve; agentic compute expands memory, storage, and bandwidth demand. DRAM ETF can be used as the concentrated global memory basket anchor when single-name memory positions are being consolidated.
+
+  - name: Boist CPU foundry and packaging
+    proxy: SOXX
+    category: Boist core
+    role: CPU mix shift, foundry capacity, advanced packaging, and semi equipment
+    holdings: [SOXX, INTC, AMD, TSM, ASML, KLAC, ONTO, AMKR, ARM, FORM, AMAT, LRCX]
+    min_weight_pct: 8.0
+    max_weight_pct: 16.0
+    notes: Ten-position basket (expanded 2026-05-08) for CPU/foundry/advanced-packaging thesis. TSM (foundry anchor), INTC (CPU/IFS), AMD (x86 CPU), SOXX (reduced breadth ETF), ASML (litho gate), KLAC (process control/yield), ONTO (advanced packaging inspection/metrology), AMKR (U.S. OSAT), ARM (CPU royalty, satellite), FORM (probe/test yield, satellite). AMAT and LRCX are watchlist; SOXX provides partial WFE coverage.
+
+  - name: Boist semiconductor beta
+    proxy: SMH
+    category: Boist core
+    role: Broad AI semiconductor infrastructure and accelerator supply chain
+    holdings: [SMH, NVDA, AVGO, MRVL, QCOM, KLAC, ADI, MCHP]
+    min_weight_pct: 7.0
+    max_weight_pct: 18.0
+    notes: Broad semiconductor ETF sleeve remains core, but memory and CPU sleeves drive the thesis.
+
+  - name: AI platforms and ASIC customers
+    proxy: IGV
+    category: Boist core
+    role: AI platforms, ASIC demand, agent software, and cloud monetization
+    holdings: [IGV, SKYY, WCLD, VGT, IYW, QQQM, AAPL, MSFT, GOOGL, GOOG, AMZN, ORCL, PLTR, SNOW, DDOG]
+    min_weight_pct: 4.0
+    max_weight_pct: 12.0
+    notes: Captures the demand side that converts agent use into compute, ASIC, storage, and cloud orders.
+
+  - name: Data-center power grid
+    proxy: GRID
+    category: Boist derivative
+    role: Grid upgrades, transmission, electrification, and power-delivery bottlenecks
+    holdings: [GRID, PAVE, IFRA, ETN, HUBB, PWR, MTZ, GEV]
+    min_weight_pct: 4.0
+    max_weight_pct: 10.0
+    notes: Agentic compute turns electricity delivery into a growth constraint rather than a background utility input.
+
+  - name: Electrical and thermal equipment
+    proxy: PAVE
+    category: Boist derivative
+    role: Switchgear, thermal management, power systems, and data-center buildout
+    holdings: [VRT, ETN, HUBB, PAVE, URI, GE, GEV, JCI, CARR]
+    min_weight_pct: 3.0
+    max_weight_pct: 10.0
+    notes: More agents mean denser racks, more heat, more power conversion, and more electrical infrastructure.
+
+  - name: Data-center connectivity and facilities
+    proxy: SRVR
+    category: Boist derivative
+    role: Data-center REITs, optical networking, routing, and physical compute facilities
+    holdings: [SRVR, EQIX, DLR, ANET, CSCO, CIEN, AVGO, MRVL]
+    min_weight_pct: 2.0
+    max_weight_pct: 7.0
+    notes: Compute demand spills into leased capacity, interconnect, optical networking, and facility uptime.
+
+  - name: Power generation and uranium
+    proxy: XLE
+    category: Boist derivative
+    role: Reliable generation, natural gas, nuclear, uranium, and utility power supply
+    holdings: [XLE, URNM, URA, CCJ, CEG, VST, NEE, XOM, CVX, DBA]
+    min_weight_pct: 3.0
+    max_weight_pct: 8.0
+    notes: Data-center electricity load can pull forward gas, nuclear, and reliable-generation demand.
+
+  - name: Industrial metals and materials
+    proxy: DBB
+    category: Boist derivative
+    role: Copper, aluminum, steel, silver inputs, and resource equities for electrification
+    holdings: [DBB, XME, XLB, FCX, SCCO, TECK]
+    min_weight_pct: 2.0
+    max_weight_pct: 6.0
+    notes: Grid, servers, cables, transformers, and energy infrastructure all increase materials intensity.
+
+  - name: Agentic cybersecurity
+    proxy: CIBR
+    category: Boist derivative
+    role: Identity, endpoint, cloud, API, and agent-security controls
+    holdings: [CIBR, HACK, IHAK, PANW, CRWD, FTNT, ZS, NET, OKTA, CYBR]
+    min_weight_pct: 1.0
+    max_weight_pct: 5.0
+    notes: More autonomous agents expand the attack surface; this remains a small derivative sleeve.
+
+  - name: Industrial automation and edge AI
+    proxy: BOTZ
+    category: Boist derivative
+    role: Robotics, machine vision, factory automation, and edge inference adoption
+    holdings: [BOTZ, ROBO, IRBO, ROK, TER, CGNX, SYM]
+    min_weight_pct: 1.0
+    max_weight_pct: 4.0
+    notes: A small option on compute moving from data centers into physical workflows and edge devices.
+
+  - name: Defense and aerospace
+    proxy: ITA
+    category: Derivative hedge
+    role: Geopolitical demand, autonomous systems, sensors, and aerospace electronics
+    holdings: [ITA, XAR, PPA, SHLD, LMT, NOC, RTX, GD, HWM]
+    min_weight_pct: 3.0
+    max_weight_pct: 8.0
+    notes: Defense remains a related hedge where compute, autonomy, sensors, and geopolitics overlap.
+
+  - name: Core US equity
+    proxy: VTI
+    category: Core ballast
+    role: Broad US market anchor outside the Boist baskets
+    holdings: [VTI, SPY, IVV, VOO, FXAIX, ITOT]
+    min_weight_pct: 6.0
+    max_weight_pct: 18.0
+    notes: Keeps broad beta present, but no longer lets broad index math dominate the Boist thesis.
+
+  - name: Core ex-US equity
+    proxy: VXUS
+    category: Core ballast
+    role: Small international diversification sleeve
+    holdings: [VXUS, IXUS, VEA, VWO, IEFA, IEMG]
+    min_weight_pct: 2.0
+    max_weight_pct: 8.0
+    notes: A modest diversifier rather than a major secular-growth allocation.
+
+  - name: Gold and precious metals
+    proxy: GLDM
+    category: Risk ballast
+    role: Crisis, currency, and real-rate hedge
+    holdings: [GLDM, GLD, IAU, IAUI, SGOL, SLV, PPLT, PLTM]
+    min_weight_pct: 5.0
+    max_weight_pct: 10.0
+    notes: Portfolio stabilizer retained because the Boist core is intentionally concentrated.
+
+  - name: Treasury and TIPS ballast
+    proxy: TIP
+    category: Risk ballast
+    role: Inflation protection, duration ballast, and lower-volatility reserve
+    holdings: [TIP, VTIP, SCHP, STIP, IEF, SHY, BIL, SGOV]
+    min_weight_pct: 3.0
+    max_weight_pct: 10.0
+    notes: Dampens drawdowns without turning the portfolio into a bond allocation.

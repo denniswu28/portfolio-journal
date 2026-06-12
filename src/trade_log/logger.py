@@ -32,7 +32,7 @@ class TradeLogger:
         self,
         ticker: str,
         action: str,
-        shares: int,
+        shares: float,
         price: float,
         rationale: str = "",
         tags: Optional[List[str]] = None,

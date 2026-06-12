@@ -1,149 +1,395 @@
-"""
-reporting.py - Portfolio performance report renderer.
-
-Generates human-readable text/markdown reports from a PortfolioSnapshot
-and its associated PerformanceMetrics.  Reports are designed for CLI output
-and for saving as markdown files under the configured reports directory.
-"""
+"""Reporting helpers for portfolio metrics and spreadsheet exports."""
 
 from __future__ import annotations
 
-from datetime import datetime
+import csv
+from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterable, List, Optional
 
-from src.data_ingestion.models import PerformanceMetrics, PortfolioSnapshot
+from src.data_ingestion.models import (
+    AssetAllocationRow,
+    FidelityAnalysisBundle,
+    GeographicExposureRow,
+    PerformanceMetrics,
+    PeriodicReturnRow,
+    PortfolioSnapshot,
+    StyleExposureRow,
+)
 
 
-def build_report(
-    snapshot: PortfolioSnapshot,
+METRICS_FIELDS = [
+    "as_of",
+    "total_portfolio_value",
+    "cash",
+    "invested_value",
+    "cumulative_return_pct",
+    "annualized_return_pct",
+    "annualized_volatility_pct",
+    "sharpe_ratio",
+    "calmar_ratio",
+    "max_drawdown_pct",
+    "max_drawdown_start",
+    "max_drawdown_end",
+    "max_drawdown_peak_value",
+    "max_drawdown_trough_value",
+    "win_rate_pct",
+    "avg_win_pct",
+    "avg_loss_pct",
+    "concentration_top3_pct",
+    "total_trades",
+    "winning_trades",
+    "losing_trades",
+]
+
+TIMESERIES_FIELDS = [
+    "date",
+    "portfolio_value",
+    "period_return_pct",
+    "cumulative_return_pct",
+    "running_peak",
+    "drawdown_pct",
+]
+
+SUPPLEMENTAL_SUMMARY_FIELDS = [
+    "name",
+    "current_value",
+    "weight_pct",
+]
+
+BASKET_SUMMARY_FIELDS = [
+    "basket",
+    "sleeve",
+    "value",
+    "weight_pct",
+    "holdings",
+    "band_min_pct",
+    "band_max_pct",
+    "band_status",
+    "unrealized_pnl",
+    "top_holding",
+]
+
+PERIODIC_RETURN_FIELDS = [
+    "period_end_date",
+    "return_type",
+    "account",
+    "one_month_pct",
+    "three_month_pct",
+    "ytd_pct",
+    "one_year_pct",
+    "three_year_pct",
+    "five_year_pct",
+    "ten_year_pct",
+    "life_pct",
+    "life_start_date",
+]
+
+RETURN_SERIES_FIELDS = [
+    "date",
+    "source",
+    "return_type",
+    "account",
+    "portfolio_value",
+    "period_return_pct",
+    "cumulative_return_pct",
+    "fidelity_one_month_pct",
+    "fidelity_ytd_pct",
+    "fidelity_life_pct",
+    "running_peak",
+    "drawdown_pct",
+]
+
+
+def build_portfolio_timeseries(snapshots: List[PortfolioSnapshot]) -> List[dict[str, Any]]:
+    """Build return and drawdown rows from portfolio snapshots."""
+    if not snapshots:
+        return []
+
+    ordered = sorted(snapshots, key=lambda s: s.timestamp)
+    starting_value = ordered[0].total_portfolio_value
+    previous_value: Optional[float] = None
+    running_peak = 0.0
+    rows: List[dict[str, Any]] = []
+
+    for snapshot in ordered:
+        value = snapshot.total_portfolio_value
+        running_peak = max(running_peak, value)
+        period_return_pct = (
+            ((value / previous_value) - 1) * 100
+            if previous_value
+            else 0.0
+        )
+        cumulative_return_pct = (
+            ((value / starting_value) - 1) * 100
+            if starting_value
+            else 0.0
+        )
+        drawdown_pct = (
+            (running_peak - value) / running_peak * 100
+            if running_peak
+            else 0.0
+        )
+        rows.append(
+            {
+                "timestamp": snapshot.timestamp,
+                "date": snapshot.timestamp.isoformat(sep=" ", timespec="seconds"),
+                "portfolio_value": value,
+                "period_return_pct": period_return_pct,
+                "cumulative_return_pct": cumulative_return_pct,
+                "running_peak": running_peak,
+                "drawdown_pct": drawdown_pct,
+            }
+        )
+        previous_value = value
+
+    return rows
+
+
+def select_latest_snapshot_per_day(
+    snapshots: List[PortfolioSnapshot],
+) -> List[PortfolioSnapshot]:
+    """Return the latest saved snapshot for each calendar day."""
+    latest_by_date: dict[date, PortfolioSnapshot] = {}
+    for snapshot in sorted(snapshots, key=lambda item: item.timestamp):
+        latest_by_date[snapshot.timestamp.date()] = snapshot
+    return [latest_by_date[key] for key in sorted(latest_by_date)]
+
+
+def metrics_to_row(
     metrics: PerformanceMetrics,
-    as_markdown: bool = True,
-) -> str:
-    """
-    Render a performance report from a snapshot and its computed metrics.
-
-    Args:
-        snapshot:     The latest PortfolioSnapshot.
-        metrics:      PerformanceMetrics (computed over full snapshot history).
-        as_markdown:  When True, adds markdown headers/bold; when False,
-                      produces plain text with ASCII dividers (same content).
-
-    Returns:
-        A formatted multi-line string ready for print() or file write.
-    """
-    sep = "─" * 54
-    header_char = "=" * 54
-
-    def _h1(text: str) -> str:
-        if as_markdown:
-            return f"# {text}"
-        return f"{header_char}\n{text}\n{header_char}"
-
-    def _h2(text: str) -> str:
-        if as_markdown:
-            return f"\n## {text}"
-        return f"\n{sep}\n{text}"
-
-    def _bold(text: str) -> str:
-        return f"**{text}**" if as_markdown else text
-
-    def _na(value: Optional[float], fmt: str = ".2f", suffix: str = "%") -> str:
-        if value is None:
-            return "N/A (insufficient history)"
-        return f"{value:{fmt}}{suffix}"
-
-    as_of = snapshot.timestamp.strftime("%Y-%m-%d %H:%M")
-    lines: list[str] = []
-
-    # ── Header ───────────────────────────────────────────────────────────────
-    lines.append(_h1(f"Portfolio Performance Report — {as_of}"))
-
-    # ── Portfolio Summary ────────────────────────────────────────────────────
-    lines.append(_h2("Portfolio Summary"))
-    lines.append(f"{'Total Value':<30} ${snapshot.total_portfolio_value:>12,.2f}")
-    lines.append(f"{'Cash':<30} ${snapshot.cash:>12,.2f}")
-    lines.append(f"{'Invested':<30} ${snapshot.invested_value:>12,.2f}")
-    lines.append(
-        f"{'Cumulative Return':<30} {metrics.cumulative_return_pct:>+11.2f}%"
-    )
-    bench_label = f"Benchmark ({metrics.benchmark_ticker}) Return"
-    lines.append(
-        f"{bench_label:<30} {_na(metrics.benchmark_cumulative_return_pct)}"
-    )
-
-    # ── Risk-Adjusted Performance ────────────────────────────────────────────
-    lines.append(_h2("Risk-Adjusted Performance"))
-    lines.append(f"{'Sharpe Ratio (annualized)':<30} {_na(metrics.sharpe_ratio, fmt='.4f', suffix='')}")
-    lines.append(
-        f"{'Alpha vs ' + metrics.benchmark_ticker + ' (ann.)':<30} {_na(metrics.alpha_annualized_pct)}"
-    )
-    lines.append(
-        f"{'Beta vs ' + metrics.benchmark_ticker:<30} {_na(metrics.beta, fmt='.4f', suffix='')}"
-    )
-
-    # ── Drawdown ─────────────────────────────────────────────────────────────
-    lines.append(_h2("Drawdown"))
-    lines.append(f"{'Current Drawdown':<30} {metrics.current_drawdown_pct:>11.2f}%")
-    dd_date = f"  (trough {metrics.max_drawdown_date})" if metrics.max_drawdown_date else ""
-    lines.append(f"{'Max Drawdown':<30} {metrics.max_drawdown_pct:>11.2f}%{dd_date}")
-
-    # ── Trade Statistics ─────────────────────────────────────────────────────
-    lines.append(_h2("Trade Statistics"))
-    lines.append(f"{'Total Trades':<30} {metrics.total_trades:>12}")
-    lines.append(f"{'Win Rate':<30} {metrics.win_rate_pct:>11.1f}%")
-    lines.append(f"{'Avg Win':<30} {metrics.avg_win_pct:>+11.2f}%")
-    lines.append(f"{'Avg Loss':<30} {metrics.avg_loss_pct:>+11.2f}%")
-
-    # ── Concentration ────────────────────────────────────────────────────────
-    lines.append(_h2("Concentration"))
-    lines.append(
-        f"{'Top-3 Holdings Weight':<30} {metrics.concentration_top3_pct:>11.1f}%"
-    )
-    if snapshot.positions:
-        top3 = sorted(snapshot.positions, key=lambda p: p.market_value, reverse=True)[:3]
-        for rank, pos in enumerate(top3, 1):
-            lines.append(
-                f"  {rank}. {pos.ticker:<8} {pos.weight_pct:>6.1f}%  ${pos.market_value:>10,.2f}"
-            )
-
-    # ── Footer ───────────────────────────────────────────────────────────────
-    if not as_markdown:
-        lines.append(f"\n{sep}")
-    lines.append(
-        f"\n_Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}_"
-        if as_markdown
-        else f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    )
-
-    return "\n".join(lines)
+    latest_snapshot: Optional[PortfolioSnapshot] = None,
+) -> dict[str, Any]:
+    """Convert headline metrics into a one-row spreadsheet record."""
+    return {
+        "as_of": _format_value(latest_snapshot.timestamp if latest_snapshot else None),
+        "total_portfolio_value": latest_snapshot.total_portfolio_value if latest_snapshot else "",
+        "cash": latest_snapshot.cash if latest_snapshot else "",
+        "invested_value": latest_snapshot.invested_value if latest_snapshot else "",
+        "cumulative_return_pct": metrics.cumulative_return_pct,
+        "annualized_return_pct": metrics.annualized_return_pct,
+        "annualized_volatility_pct": metrics.annualized_volatility_pct,
+        "sharpe_ratio": metrics.sharpe_ratio,
+        "calmar_ratio": metrics.calmar_ratio,
+        "max_drawdown_pct": metrics.max_drawdown_pct,
+        "max_drawdown_start": _format_value(metrics.max_drawdown_start),
+        "max_drawdown_end": _format_value(metrics.max_drawdown_end),
+        "max_drawdown_peak_value": metrics.max_drawdown_peak_value,
+        "max_drawdown_trough_value": metrics.max_drawdown_trough_value,
+        "win_rate_pct": metrics.win_rate_pct,
+        "avg_win_pct": metrics.avg_win_pct,
+        "avg_loss_pct": metrics.avg_loss_pct,
+        "concentration_top3_pct": metrics.concentration_top3_pct,
+        "total_trades": metrics.total_trades,
+        "winning_trades": metrics.winning_trades,
+        "losing_trades": metrics.losing_trades,
+    }
 
 
-def save_report(
-    report_text: str,
-    reports_dir: str = "output/reports",
-    as_of: Optional[datetime] = None,
-    suffix: str = "md",
+def write_metrics_summary(
+    metrics: PerformanceMetrics,
+    output_path: str | Path,
+    latest_snapshot: Optional[PortfolioSnapshot] = None,
 ) -> Path:
-    """
-    Save *report_text* to a timestamped file in *reports_dir*.
-
-    Args:
-        report_text:  The rendered report string.
-        reports_dir:  Directory to write the file (created if needed).
-        as_of:        Timestamp for the filename (defaults to now).
-        suffix:       File extension without dot (default "md").
-
-    Returns:
-        The Path of the saved file.
-    """
-    if as_of is None:
-        as_of = datetime.now()
-
-    out_dir = Path(reports_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = f"report_{as_of.strftime('%Y%m%d_%H%M%S')}.{suffix}"
-    path = out_dir / filename
-    path.write_text(report_text, encoding="utf-8")
+    """Write headline metrics to a CSV file that opens cleanly in spreadsheets."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = metrics_to_row(metrics, latest_snapshot=latest_snapshot)
+    _write_csv(path, METRICS_FIELDS, [row])
     return path
+
+
+def write_portfolio_timeseries(
+    snapshots: List[PortfolioSnapshot],
+    output_path: str | Path,
+) -> Path:
+    """Write return and drawdown time series to a CSV file."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = build_portfolio_timeseries(snapshots)
+    _write_csv(path, TIMESERIES_FIELDS, rows)
+    return path
+
+
+def write_asset_allocation_summary(
+    rows: List[AssetAllocationRow],
+    output_path: str | Path,
+) -> Path:
+    """Write asset-class exposure summarized by current value."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(path, SUPPLEMENTAL_SUMMARY_FIELDS, summarize_asset_allocation(rows))
+    return path
+
+
+def write_geographic_exposure_summary(
+    rows: List[GeographicExposureRow],
+    output_path: str | Path,
+) -> Path:
+    """Write region exposure summarized by current value."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(path, SUPPLEMENTAL_SUMMARY_FIELDS, summarize_geographic_exposure(rows))
+    return path
+
+
+def write_style_exposure_summary(
+    rows: List[StyleExposureRow],
+    output_path: str | Path,
+) -> Path:
+    """Write style exposure summarized by current value."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(path, SUPPLEMENTAL_SUMMARY_FIELDS, summarize_style_exposure(rows))
+    return path
+
+
+def write_basket_summary(
+    basket_metrics: List[dict],
+    output_path: str | Path,
+) -> Path:
+    """Write per-basket value, weight, P&L, and policy-band status."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(path, BASKET_SUMMARY_FIELDS, basket_metrics)
+    return path
+
+
+def write_fidelity_periodic_returns(
+    rows: List[PeriodicReturnRow],
+    output_path: str | Path,
+) -> Path:
+    """Write Fidelity account-level periodic returns."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(path, PERIODIC_RETURN_FIELDS, [row.model_dump() for row in rows])
+    return path
+
+
+def write_return_series(
+    snapshots: List[PortfolioSnapshot],
+    periodic_returns: List[PeriodicReturnRow],
+    output_path: str | Path,
+) -> Path:
+    """Write source-labeled snapshot and Fidelity return rows for graphing."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(path, RETURN_SERIES_FIELDS, build_return_series(snapshots, periodic_returns))
+    return path
+
+
+def build_return_series(
+    snapshots: List[PortfolioSnapshot],
+    periodic_returns: List[PeriodicReturnRow],
+) -> List[dict[str, Any]]:
+    """Build rows that keep snapshot-derived and Fidelity returns source-labeled."""
+    rows: List[dict[str, Any]] = []
+    for row in build_portfolio_timeseries(snapshots):
+        rows.append(
+            {
+                "date": row["date"],
+                "source": "snapshot",
+                "return_type": "portfolio_value",
+                "account": "",
+                "portfolio_value": row["portfolio_value"],
+                "period_return_pct": row["period_return_pct"],
+                "cumulative_return_pct": row["cumulative_return_pct"],
+                "running_peak": row["running_peak"],
+                "drawdown_pct": row["drawdown_pct"],
+            }
+        )
+
+    for row in sorted(periodic_returns, key=lambda item: (item.period_end_date, item.return_type)):
+        if row.return_type != "time_weighted":
+            continue
+        rows.append(
+            {
+                "date": row.period_end_date.isoformat(),
+                "source": "fidelity_periodic_returns",
+                "return_type": row.return_type,
+                "account": row.account,
+                "portfolio_value": "",
+                "period_return_pct": "",
+                "cumulative_return_pct": row.life_pct,
+                "fidelity_one_month_pct": row.one_month_pct,
+                "fidelity_ytd_pct": row.ytd_pct,
+                "fidelity_life_pct": row.life_pct,
+                "running_peak": "",
+                "drawdown_pct": "",
+            }
+        )
+
+    return sorted(rows, key=lambda item: str(item["date"]))
+
+
+def summarize_asset_allocation(rows: List[AssetAllocationRow], limit: int = 8) -> List[dict[str, Any]]:
+    """Summarize asset allocation rows by asset class."""
+    return _summarize_by_value(rows, lambda row: row.asset_class, lambda row: row.current_value, limit)
+
+
+def summarize_geographic_exposure(rows: List[GeographicExposureRow], limit: int = 8) -> List[dict[str, Any]]:
+    """Summarize geographic exposure rows by region."""
+    return _summarize_by_value(rows, lambda row: row.region, lambda row: row.current_value, limit)
+
+
+def summarize_country_exposure(rows: List[GeographicExposureRow], limit: int = 8) -> List[dict[str, Any]]:
+    """Summarize geographic exposure rows by country."""
+    return _summarize_by_value(rows, lambda row: row.country, lambda row: row.current_value, limit)
+
+
+def summarize_style_exposure(rows: List[StyleExposureRow], limit: int = 9) -> List[dict[str, Any]]:
+    """Summarize style exposure rows by style box."""
+    return _summarize_by_value(rows, lambda row: row.style, lambda row: row.current_value, limit)
+
+
+def latest_time_weighted_periodic_return(
+    bundle: FidelityAnalysisBundle,
+) -> Optional[PeriodicReturnRow]:
+    """Return the latest time-weighted Fidelity periodic return row in a bundle."""
+    rows = [row for row in bundle.periodic_returns if row.return_type == "time_weighted"]
+    if not rows:
+        return None
+    return sorted(rows, key=lambda row: row.period_end_date)[-1]
+
+
+def _write_csv(path: Path, fields: list[str], rows: Iterable[dict[str, Any]]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: _format_value(row.get(field)) for field in fields})
+
+
+def _format_value(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ", timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, float):
+        return round(value, 6)
+    return value
+
+
+def _summarize_by_value(
+    rows: Iterable[Any],
+    name_getter,
+    value_getter,
+    limit: int,
+) -> List[dict[str, Any]]:
+    totals: dict[str, float] = {}
+    for row in rows:
+        name = name_getter(row) or "Unknown"
+        totals[name] = totals.get(name, 0.0) + value_getter(row)
+
+    total_value = sum(totals.values())
+    summary = [
+        {
+            "name": name,
+            "current_value": value,
+            "weight_pct": (value / total_value * 100) if total_value else 0.0,
+        }
+        for name, value in totals.items()
+    ]
+    return sorted(summary, key=lambda row: row["current_value"], reverse=True)[:limit]
