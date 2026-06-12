@@ -10,6 +10,8 @@ A command-line portfolio tracking and LLM prompt generation tool for Fidelity po
 - **Analytics** — cost basis, unrealized/realized P&L, Sharpe ratio, max drawdown, win rate
 - **Reports & Plots** — export metrics spreadsheets plus return/drawdown, P&L, concentration, allocation, geography, and style plots
 - **Portfolio Theory Rebalance** — research broad secular-growth sleeves, fetch Yahoo Finance history, and export equal-vol, ERC, Sharpe-weighted, and max-Sharpe target weights
+- **Basket Engine** — first-class baskets from the Fidelity `Basket Name` column, changed only via Method A (recompose) or Method B (resize), with policy-band checks and brokerage-ready order plans
+- **Options Harness** — deterministic QuantLib pricing/greeks/payoff, a Level-2 strategy validator, an option screener (which put to sell / call to buy), portfolio greeks + stress, and a semi-automated daily monitor
 - **Trade Log** — record trades with free-text rationale and tags
 - **Daily Journal** — keep one daily record of snapshots, P&L, prompts, and LLM decisions
 - **LLM Prompt Engine** — generate ready-to-paste prompts for ChatGPT, Claude, etc.
@@ -312,7 +314,23 @@ python main.py sync-bundle --date YYYY-MM-DD
 
 python main.py status                    # Current portfolio table
 python main.py analytics                 # Performance metrics
-python main.py report                    # Metrics CSVs and PNG plots
+python main.py report                    # Metrics CSVs and PNG plots (incl. basket summary)
+
+python main.py basket-plan               # Show the basket decomposition vs policy bands
+python main.py basket-plan --basket "AI Platform" --recompose "MSFT=7,IGV=7,GOOG=25"
+                                        # Method A: change component percentages (total fixed)
+python main.py basket-plan --basket "AI Memory and Storage" --resize-by -300
+                                        # Method B: add/remove $ from the whole basket
+
+python main.py options-chain -t SMH      # Near-the-money chain with IV
+python main.py options-analyze -u SMH --structure bull-put-spread --strikes 580,530 --expiry 2026-07-17
+                                        # Price a Level-2 structure: net debit/credit, max P/L, greeks
+python main.py options-screen -u SNDK --direction income
+                                        # Rank which puts to sell (POP, RoR, EV)
+python main.py log-option -u SMH --structure bull-put-spread --strikes 580,530 \
+  --expiry 2026-07-17 --net-debit -553 -r "boist put-sell"
+                                        # Record an opened option position
+python main.py monitor                   # Re-mark options, evaluate TP/SL/roll/assignment/event rules
 
 python main.py log-trade -t TICKER -a BUY -s SHARES -p PRICE -r "Rationale"
 python main.py history                   # Recent trades
@@ -321,6 +339,7 @@ python main.py history --ticker AAPL     # Filter by ticker
 python main.py prompt                    # Trade recommendation prompt
 python main.py prompt --type review      # Portfolio review prompt
 python main.py prompt --type risk        # Risk check prompt
+python main.py prompt --type options     # Options strategy prompt (basket + greeks context)
 python main.py prompt -q "Your question" # Custom question
 python main.py prompt -o my_prompt.txt   # Save to specific file
 
@@ -330,6 +349,38 @@ python main.py journal                   # Show the latest journal entry
 python main.py journal --date 2026-04-22
                                         # Show a specific day
 ```
+
+---
+
+### Baskets and Options Harness
+
+The portfolio is changed **only through baskets**, in two ways (see [AGENTS.md](AGENTS.md)):
+
+- **Method A — recompose**: change component percentages inside a basket; the basket
+  dollar total stays fixed unless you pass `--new-total`.
+- **Method B — resize**: add or remove dollars to/from the whole basket with
+  `--resize-to`/`--resize-by`, preserving component ratios.
+
+Baskets come from the Fidelity `Basket Name` column; policy bands (min/max weight) come
+from `config/growth_universe.yaml`, matched by holdings overlap. Individual out-of-basket
+tickers (e.g. `FXAIX`, `SPAXX`) are edited directly and reported separately. Each plan is
+written to `output/reports/<date>/basket_plan_*.md`.
+
+The **options harness** is deterministic-first (QuantLib + scipy): pricing, greeks,
+payoff, probability of profit, and risk never come from an LLM. Account privilege is
+**Level 2 + margin** — buy-writes, covered calls (+roll), long calls/puts, cash-secured
+puts, long straddles/strangles, spreads ≤ 4 legs, and covered puts. `validate_level2()`
+rejects naked calls and any undefined-risk short leg. Every order ticket specifies the
+underlying, right, strikes, expiry/DTE, structure, action per leg, net debit/credit,
+contracts ("hands"), max loss/profit, breakevens, margin/assignment, and exit rules.
+
+- `options-analyze` writes a full order ticket plus a payoff plot.
+- `options-screen` ranks defined-risk candidates (which put to sell / call to buy) by
+  probability of profit, annualized return on margin, and expected value.
+- `log-option` records an opened position to `data/options_positions.json`.
+- `monitor` re-marks open positions, evaluates take-profit / stop-loss / time-stop /
+  assignment / event rules (events from `config/event_calendar.yaml`), and writes alerts
+  plus recommended orders to `output/reports/<date>/monitor_*.md`. It never executes.
 
 ---
 
