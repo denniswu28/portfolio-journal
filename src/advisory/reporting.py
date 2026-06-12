@@ -73,7 +73,7 @@ def render_markdown(run: AdvisoryRun) -> str:
     a("")
 
     # 3. Basket verdicts.
-    cat_by_ticker = {it.ticker.upper(): it for it in (run.catalysts.items if run.catalysts else [])}
+    cat_by_ticker = {it.ticker.upper(): it for it in run.catalysts.items}
     a("## 3. Basket verdicts (add / trim / hold)")
     if run.basket_actions:
         a("| Basket | Weight | Band | Status | Verdict | Signal | Confidence | Catalyst | Note |")
@@ -87,8 +87,10 @@ def render_markdown(run: AdvisoryRun) -> str:
             a(f"| {c.basket} | {c.weight_pct:.1f}% | {band} | {c.band_status} | "
               f"**{c.verdict}** | {signal} | {c.confidence or '-'} | {catalyst} | {c.note} |")
         a("")
-        a("_Verdict = policy band; Signal/Confidence = technical overlay (top holding). "
-          "Apply via:_ `basket-plan --basket \"<name>\" --recompose ... | --resize-to <$>`.")
+        a("_Verdict = policy band; Signal/Confidence = technical overlay (top holding); "
+          "Catalyst = news direction for the signal proxy ticker (full list in section 4b; "
+          "blank when --no-network). Apply via:_ "
+          "`basket-plan --basket \"<name>\" --recompose ... | --resize-to <$>`.")
     else:
         a("_No baskets decomposed (no sleeve match or no positions)._")
     a("")
@@ -109,7 +111,7 @@ def render_markdown(run: AdvisoryRun) -> str:
     # 4b. Daily catalysts (news bridge).
     a("## 4b. Daily catalysts (news bridge, advisory)")
     cat = run.catalysts
-    if cat and cat.found:
+    if cat.found:
         stale = " (STALE vs snapshot)" if cat.stale_vs_snapshot else ""
         a(f"_Source: {cat.generated_by or 'n/a'} | {cat.catalyst_date or 'n/a'}{stale}. "
           "Narrative/context only; deterministic numbers unchanged._")
@@ -137,6 +139,8 @@ def render_markdown(run: AdvisoryRun) -> str:
         if cat.freeform_notes:
             a("> " + cat.freeform_notes.replace("\n", "\n> "))
             a("")
+    elif cat.skipped:
+        a("_Catalyst brief skipped (--no-catalysts)._")
     else:
         a("_No catalyst brief for the run date - run `catalyst-prompt` / `catalyst-ingest`._")
     a("")

@@ -119,6 +119,7 @@ class CatalystContext:
     digest: str = ""
     stale_vs_snapshot: bool = False
     found: bool = False
+    skipped: bool = False   # True when the brief was intentionally skipped (--no-catalysts)
 
     def to_dict(self) -> dict:
         return asdict(self)

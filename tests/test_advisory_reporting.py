@@ -118,6 +118,15 @@ def test_report_degrades_without_catalysts():
     assert "No catalyst brief" in md
 
 
+def test_report_distinguishes_skipped_from_missing():
+    # --no-catalysts must not tell the operator to run the commands they skipped.
+    run = _run_with_catalysts()
+    run.catalysts = CatalystContext(found=False, skipped=True)
+    md = render_markdown(run)
+    assert "skipped (--no-catalysts)" in md
+    assert "run `catalyst-prompt`" not in md
+
+
 def test_report_sanitizes_pipe_in_catalyst_summary():
     # A literal '|' in an LLM-pasted summary would inject extra markdown columns;
     # it must be swapped so the per-ticker row keeps its 6 cells.

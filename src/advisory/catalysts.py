@@ -45,6 +45,10 @@ def _parse_iso(value, warnings: List[str], label: str) -> Optional[str]:
 
 
 def _build_item(raw: dict, warnings: List[str]) -> Optional[CatalystItem]:
+    # NOTE (deferred): the spec also wants unknown tickers (not in the held/sleeve
+    # universe) flagged in warnings. That needs a known-universe set threaded in from
+    # the caller; deferred since catalysts are display-only. Catalysts never affect
+    # deterministic numbers, so an unrecognized ticker is harmless context.
     if not isinstance(raw, dict):
         warnings.append(f"item not a mapping, skipped: {raw!r}")
         return None

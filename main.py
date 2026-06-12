@@ -110,7 +110,7 @@ from src.trade_log.option_logger import OptionTradeLogger
 from src.utils.config_loader import load_persistent_context, load_settings
 from src.advisory.catalysts import build_catalyst_context, parse_catalyst_paste, CatalystValidationError
 from src.advisory.gating import options_gate_status
-from src.advisory.models import OptionAdvisorySummary
+from src.advisory.models import CatalystContext, OptionAdvisorySummary
 from src.advisory.orchestrator import build_advisory_run, known_tickers
 from src.advisory.reporting import write_advisory
 from src.advisory.thesis import build_thesis_context
@@ -1999,7 +1999,7 @@ def daily_advisory(brief_date_text, snapshot_path, universe_path, thesis_file, c
     )
 
     if no_catalysts:
-        catalyst_ctx = None
+        catalyst_ctx = CatalystContext(skipped=True)
     else:
         catalyst_ctx = build_catalyst_context(
             as_of, data_dir=data_dir, explicit_file=catalyst_file,
@@ -2041,7 +2041,7 @@ def daily_advisory(brief_date_text, snapshot_path, universe_path, thesis_file, c
         try:
             trades = TradeHistory(TradeLogger(settings.get("trade_history_file", "data/trade_history.json"))).get_recent(10)
             question = run.thesis.digest[:500] if run.thesis.found else "Plan tomorrow's actions."
-            if run.catalysts and run.catalysts.found and run.catalysts.digest:
+            if run.catalysts.found and run.catalysts.digest:
                 question += " | Catalysts: " + run.catalysts.digest[:400]
             prompt_text = truncate_to_budget(
                 generate_prompt("trade", snapshot, trades, None, ctx, user_question=question), 4000)
