@@ -59,7 +59,7 @@ def test_daily_advisory_gated_offline(monkeypatch, tmp_path):
     assert md and js
     text = md[0].read_text(encoding="utf-8")
     assert "AAPL exceeds 10% cap" in text
-    assert "ADVISORY ONLY — NOT EXECUTABLE" in text
+    assert "ADVISORY ONLY - NOT EXECUTABLE" in text
     assert "Memory thesis" in text
 
 

@@ -5,6 +5,9 @@ import json
 from src.advisory.models import (
     AdvisoryRun,
     BasketActionCandidate,
+    CatalystContext,
+    CatalystItem,
+    MacroCatalyst,
     OptionAdvisorySummary,
     RuleAlert,
     ThesisContext,
@@ -48,8 +51,8 @@ def _run(gated=True):
 
 def test_render_markdown_has_sections_and_gate_banner():
     md = render_markdown(_run(gated=True))
-    assert "# Daily Advisory — 2026-06-07" in md
-    assert "ADVISORY ONLY — NOT EXECUTABLE" in md
+    assert "# Daily Advisory - 2026-06-07" in md
+    assert "ADVISORY ONLY - NOT EXECUTABLE" in md
     assert "## 1. Priority action queue" in md
     assert "AAPL exceeds 10% cap" in md
     assert "## 3. Basket verdicts" in md and "**TRIM**" in md
@@ -78,3 +81,38 @@ def test_no_box_drawing_glyphs():
     md = render_markdown(_run())
     for glyph in ["─", "│", "┌", "┐", "└", "┘", "├", "┤", "═"]:
         assert glyph not in md
+
+
+def _run_with_catalysts():
+    return AdvisoryRun(
+        as_of_date="2026-06-12", generated_at="t", snapshot_path="s",
+        portfolio_value=16000.0, cash=1600.0, cash_pct=10.0,
+        gate={"executable": False, "reason": "gated"},
+        basket_actions=[BasketActionCandidate(
+            basket="AI Platform", weight_pct=20.0, band_min_pct=15, band_max_pct=25,
+            band_status="OK", verdict="HOLD", signal_ticker="NVDA")],
+        catalysts=CatalystContext(
+            found=True, catalyst_date="2026-06-12", generated_by="perplexity",
+            macro=[MacroCatalyst(direction="bull", summary="rate-cut odds up")],
+            items=[CatalystItem(ticker="NVDA", direction="bull", summary="hyperscaler order",
+                                event_date="2026-06-18", confidence="med")],
+            near_term=[CatalystItem(ticker="NVDA", direction="bull", summary="hyperscaler order",
+                                    event_date="2026-06-18")],
+        ),
+    )
+
+
+def test_report_renders_catalyst_section_and_column():
+    md = render_markdown(_run_with_catalysts())
+    assert "## 4b. Daily catalysts" in md
+    assert "hyperscaler order" in md       # per-ticker row
+    assert "rate-cut odds up" in md        # macro row
+    assert "| Catalyst |" in md            # basket table gained the column
+    md.encode("ascii", errors="strict")    # ASCII-only
+
+
+def test_report_degrades_without_catalysts():
+    run = _run_with_catalysts()
+    run.catalysts = CatalystContext(found=False)
+    md = render_markdown(run)
+    assert "No catalyst brief" in md

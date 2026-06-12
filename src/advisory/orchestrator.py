@@ -12,7 +12,7 @@ from datetime import date, timedelta
 from typing import List, Optional, Set
 
 from src.advisory.gating import options_gate_status
-from src.advisory.models import AdvisoryRun, OptionAdvisorySummary
+from src.advisory.models import AdvisoryRun, CatalystContext, OptionAdvisorySummary
 from src.advisory.rules import basket_action_candidates, evaluate_rules
 from src.advisory.signal_overlay import enrich_basket_actions
 from src.advisory.thesis import build_thesis_context
@@ -67,6 +67,7 @@ def build_advisory_run(
     prompt_path: Optional[str] = None,
     signals_by_ticker: Optional[dict] = None,
     extra_notes: Optional[List[str]] = None,
+    catalyst_context: Optional[CatalystContext] = None,
 ) -> AdvisoryRun:
     """Build the AdvisoryRun from a snapshot and already-loaded config/inputs."""
     notes: List[str] = list(extra_notes or [])
@@ -124,6 +125,7 @@ def build_advisory_run(
         rule_alerts=rule_alerts,
         basket_actions=basket_actions,
         thesis=thesis,
+        catalysts=catalyst_context or CatalystContext(),
         events=events,
         options=option_summary,
         metrics=metrics or {},

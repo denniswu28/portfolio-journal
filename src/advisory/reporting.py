@@ -25,7 +25,7 @@ def render_markdown(run: AdvisoryRun) -> str:
     lines: List[str] = []
     a = lines.append
 
-    a(f"# Daily Advisory — {run.as_of_date}")
+    a(f"# Daily Advisory - {run.as_of_date}")
     a("")
     a(EDU_NOTE)
     a("")
@@ -37,8 +37,8 @@ def render_markdown(run: AdvisoryRun) -> str:
     a(f"- Portfolio value: {_fmt_money(run.portfolio_value)} | "
       f"Cash: {_fmt_money(run.cash)} ({run.cash_pct:.1f}%)")
     gate = run.gate or {}
-    state = "EXECUTABLE" if gate.get("executable") else "ADVISORY ONLY — NOT EXECUTABLE"
-    a(f"- **OPTIONS GATE: {state}** — {gate.get('reason', '')}")
+    state = "EXECUTABLE" if gate.get("executable") else "ADVISORY ONLY - NOT EXECUTABLE"
+    a(f"- **OPTIONS GATE: {state}** - {gate.get('reason', '')}")
     if run.thesis and run.thesis.found:
         stale = " (STALE vs snapshot)" if run.thesis.stale_vs_snapshot else ""
         a(f"- Thesis: {run.thesis.path}{stale}")
@@ -65,16 +65,19 @@ def render_markdown(run: AdvisoryRun) -> str:
     a("")
 
     # 3. Basket verdicts.
+    cat_by_ticker = {it.ticker.upper(): it for it in (run.catalysts.items if run.catalysts else [])}
     a("## 3. Basket verdicts (add / trim / hold)")
     if run.basket_actions:
-        a("| Basket | Weight | Band | Status | Verdict | Signal | Confidence | Note |")
-        a("|---|---|---|---|---|---|---|---|")
+        a("| Basket | Weight | Band | Status | Verdict | Signal | Confidence | Catalyst | Note |")
+        a("|---|---|---|---|---|---|---|---|---|")
         for c in run.basket_actions:
             band = (f"{c.band_min_pct}-{c.band_max_pct}%"
                     if c.band_min_pct is not None else "n/a")
             signal = "n/a" if c.signal_score is None else f"{c.signal_ticker} {c.signal_score:+.2f}"
+            hit = cat_by_ticker.get((c.signal_ticker or "").upper())
+            catalyst = hit.direction if hit else "-"
             a(f"| {c.basket} | {c.weight_pct:.1f}% | {band} | {c.band_status} | "
-              f"**{c.verdict}** | {signal} | {c.confidence or '-'} | {c.note} |")
+              f"**{c.verdict}** | {signal} | {c.confidence or '-'} | {catalyst} | {c.note} |")
         a("")
         a("_Verdict = policy band; Signal/Confidence = technical overlay (top holding). "
           "Apply via:_ `basket-plan --basket \"<name>\" --recompose ... | --resize-to <$>`.")
@@ -95,8 +98,42 @@ def render_markdown(run: AdvisoryRun) -> str:
         a("_No thesis found on or before the run date._")
     a("")
 
+    # 4b. Daily catalysts (news bridge).
+    a("## 4b. Daily catalysts (news bridge, advisory)")
+    cat = run.catalysts
+    if cat and cat.found:
+        stale = " (STALE vs snapshot)" if cat.stale_vs_snapshot else ""
+        a(f"_Source: {cat.generated_by or 'n/a'} | {cat.catalyst_date or 'n/a'}{stale}. "
+          "Narrative/context only; deterministic numbers unchanged._")
+        a("")
+        if cat.macro:
+            a("**Macro:**")
+            a("| Direction | Summary | Date | Source |")
+            a("|---|---|---|---|")
+            for m in cat.macro:
+                a(f"| {m.direction} | {m.summary} | {m.event_date or '-'} | {m.source_url or '-'} |")
+            a("")
+        if cat.items:
+            a("**Per-ticker:**")
+            a("| Ticker | Direction | Summary | Date | Confidence | Source |")
+            a("|---|---|---|---|---|---|")
+            for it in cat.items:
+                a(f"| {it.ticker} | {it.direction} | {it.summary} | {it.event_date or '-'} | "
+                  f"{it.confidence or '-'} | {it.source_url or '-'} |")
+            a("")
+        if cat.near_term:
+            a("**Near-term catalysts (reduce size into events):** "
+              + ", ".join(f"{it.ticker} ({it.event_date})" for it in cat.near_term))
+            a("")
+        if cat.freeform_notes:
+            a("> " + cat.freeform_notes.replace("\n", "\n> "))
+            a("")
+    else:
+        a("_No catalyst brief for the run date - run `catalyst-prompt` / `catalyst-ingest`._")
+    a("")
+
     # 5. Event timing.
-    a("## 5. Event calendar — when to act")
+    a("## 5. Event calendar - when to act")
     if run.events:
         a("| Date | Label | Scope |")
         a("|---|---|---|")
@@ -107,12 +144,12 @@ def render_markdown(run: AdvisoryRun) -> str:
     a("")
 
     # 6. Options.
-    a("## 6. Options — defined-risk ideas (gated)")
+    a("## 6. Options - defined-risk ideas (gated)")
     opt = run.options
     if opt is None:
         a("_Options section skipped._")
     elif opt.gated:
-        a(f"**SUPPRESSED label — {opt.gate_reason}**")
+        a(f"**SUPPRESSED label - {opt.gate_reason}**")
         a("")
         a("_Ideas below are advisory only; do not place until the gate clears._")
         a("")
@@ -164,7 +201,7 @@ def _render_open_option_alerts(a, alerts):
     if not alerts:
         return
     a("")
-    a("**Open option positions — monitor alerts:**")
+    a("**Open option positions - monitor alerts:**")
     a("")
     a("| Underlying | Kind | Severity | Message |")
     a("|---|---|---|---|")

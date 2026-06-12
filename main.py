@@ -108,7 +108,7 @@ from src.trade_log.journal import JournalStore
 from src.trade_log.logger import TradeLogger
 from src.trade_log.option_logger import OptionTradeLogger
 from src.utils.config_loader import load_persistent_context, load_settings
-from src.advisory.catalysts import parse_catalyst_paste, CatalystValidationError
+from src.advisory.catalysts import build_catalyst_context, parse_catalyst_paste, CatalystValidationError
 from src.advisory.gating import options_gate_status
 from src.advisory.models import OptionAdvisorySummary
 from src.advisory.orchestrator import build_advisory_run, known_tickers
@@ -1958,6 +1958,8 @@ def _advisory_screens(underlyings, rate, notes):
 @click.option("--snapshot", "snapshot_path", default=None, help="Snapshot to brief against (default: latest).")
 @click.option("--universe", "universe_path", default="config/growth_universe.yaml")
 @click.option("--thesis-file", default=None, help="Boist markdown override (default: latest by date).")
+@click.option("--catalyst-file", default=None, help="Catalyst YAML override (default: latest by date).")
+@click.option("--no-catalysts", is_flag=True, default=False, help="Skip the daily catalyst brief.")
 @click.option("--data-dir", default="data")
 @click.option("--event-horizon-days", default=30, type=int)
 @click.option("--include-option-screens", is_flag=True, default=False)
@@ -1966,9 +1968,9 @@ def _advisory_screens(underlyings, rate, notes):
 @click.option("--no-network", is_flag=True, default=False, help="Skip all yfinance calls.")
 @click.option("--with-prompt/--no-prompt", default=True)
 @click.option("--output-dir", default=None)
-def daily_advisory(brief_date_text, snapshot_path, universe_path, thesis_file, data_dir,
-                   event_horizon_days, include_option_screens, screen_underlyings, rate,
-                   no_network, with_prompt, output_dir):
+def daily_advisory(brief_date_text, snapshot_path, universe_path, thesis_file, catalyst_file,
+                   no_catalysts, data_dir, event_horizon_days, include_option_screens,
+                   screen_underlyings, rate, no_network, with_prompt, output_dir):
     """One dated, gated, prioritized advisory packet (markdown + JSON). Read-only."""
     settings, ctx = _load_config()
     tracker = PortfolioTracker(snapshots_dir=settings.get("snapshots_dir", "data/portfolio_snapshots"))
@@ -1996,6 +1998,16 @@ def daily_advisory(brief_date_text, snapshot_path, universe_path, thesis_file, d
         snapshot_date=snapshot.timestamp.date(), known_tickers=known_tickers(sleeves, snapshot),
     )
 
+    if no_catalysts:
+        catalyst_ctx = None
+    else:
+        catalyst_ctx = build_catalyst_context(
+            as_of, data_dir=data_dir, explicit_file=catalyst_file,
+            snapshot_date=snapshot.timestamp.date(), event_horizon_days=event_horizon_days,
+        )
+        if not catalyst_ctx.found:
+            notes.append("No catalyst brief found (run catalyst-prompt / catalyst-ingest).")
+
     open_alerts, candidates, signals_by_ticker = [], [], {}
     if no_network:
         notes.append("Network calls skipped (--no-network): no live option marks, screens, or signals.")
@@ -2022,13 +2034,15 @@ def daily_advisory(brief_date_text, snapshot_path, universe_path, thesis_file, d
         ctx=ctx, sleeves=sleeves, generated_at=datetime.now().isoformat(timespec="seconds"),
         data_dir=data_dir, thesis_file=thesis_file, event_horizon_days=event_horizon_days,
         option_summary=option_summary, metrics=metrics, signals_by_ticker=signals_by_ticker,
-        extra_notes=notes,
+        extra_notes=notes, catalyst_context=catalyst_ctx,
     )
 
     if with_prompt:
         try:
             trades = TradeHistory(TradeLogger(settings.get("trade_history_file", "data/trade_history.json"))).get_recent(10)
             question = run.thesis.digest[:500] if run.thesis.found else "Plan tomorrow's actions."
+            if run.catalysts and run.catalysts.found and run.catalysts.digest:
+                question += " | Catalysts: " + run.catalysts.digest[:400]
             prompt_text = truncate_to_budget(
                 generate_prompt("trade", snapshot, trades, None, ctx, user_question=question), 4000)
             prompt_dir = Path(settings.get("output_dir", "output/prompts"))
