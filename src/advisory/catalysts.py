@@ -164,7 +164,9 @@ def build_catalyst_context(
         return CatalystContext(found=False)
     try:
         ctx, _warnings = parse_catalyst_paste(Path(path).read_text(encoding="utf-8", errors="replace"))
-    except CatalystValidationError:
+    except (CatalystValidationError, OSError):
+        # OSError covers IsADirectoryError / PermissionError / a delete-after-exists race:
+        # an unreadable brief must degrade, never crash the daily advisory run.
         return CatalystContext(found=False, path=str(path))
 
     ctx.path = str(path)
@@ -183,6 +185,8 @@ def build_catalyst_context(
             continue
         if as_of <= ev <= horizon_end:
             near.append(item)
+    # ctx.digest was set by parse_catalyst_paste above and reflects all items (not
+    # near_term only); rebuild via _digest if a near-term-only digest is ever needed.
     ctx.near_term = near
 
     if ctx.catalyst_date and snapshot_date is not None:

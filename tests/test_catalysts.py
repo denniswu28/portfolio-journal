@@ -1,6 +1,14 @@
-from src.advisory.models import CatalystItem, MacroCatalyst, CatalystContext, AdvisoryRun
+from datetime import date
+
 import pytest
-from src.advisory.catalysts import parse_catalyst_paste, CatalystValidationError
+
+from src.advisory.models import CatalystItem, MacroCatalyst, CatalystContext, AdvisoryRun
+from src.advisory.catalysts import (
+    parse_catalyst_paste,
+    CatalystValidationError,
+    find_latest_catalyst_file,
+    build_catalyst_context,
+)
 
 GOOD_PASTE = """```yaml
 as_of: 2026-06-12
@@ -104,10 +112,6 @@ def test_advisory_run_has_catalysts_default():
     assert "catalysts" in run.to_dict()
 
 
-from datetime import date
-from src.advisory.catalysts import find_latest_catalyst_file, build_catalyst_context
-
-
 def _write_brief(dir_path, d, body):
     cat_dir = dir_path / "catalysts"
     cat_dir.mkdir(parents=True, exist_ok=True)
@@ -123,6 +127,15 @@ def test_find_latest_on_or_before(tmp_path):
 
 def test_build_context_missing_is_graceful(tmp_path):
     ctx = build_catalyst_context(date(2026, 6, 12), data_dir=tmp_path)
+    assert ctx.found is False
+
+
+def test_build_context_unreadable_explicit_file_is_graceful(tmp_path):
+    # A directory passed as explicit_file exists() but is not readable as a file;
+    # it must degrade to found=False, never raise (daily advisory must not crash).
+    a_dir = tmp_path / "not_a_file.yaml"
+    a_dir.mkdir()
+    ctx = build_catalyst_context(date(2026, 6, 12), explicit_file=a_dir)
     assert ctx.found is False
 
 
