@@ -165,6 +165,71 @@ def plot_position_weights(
     return _save_figure(fig, output_path, show=show)
 
 
+def plot_basket_weights(
+    basket_metrics: List[dict],
+    output_path: str | Path,
+    show: bool = False,
+) -> Path:
+    """Save a horizontal bar chart of basket weights, colored by policy-band status."""
+    if not basket_metrics:
+        raise ValueError("Need at least one basket to plot basket weights.")
+
+    ordered = sorted(basket_metrics, key=lambda r: r.get("weight_pct", 0.0), reverse=True)
+    labels = [r["basket"] for r in ordered]
+    weights = [r.get("weight_pct", 0.0) for r in ordered]
+    status_color = {"ABOVE": "#dc2626", "BELOW": "#d97706", "OK": "#0f766e", "N/A": "#6b7280"}
+    colors = [status_color.get(r.get("band_status", "N/A"), "#6b7280") for r in ordered]
+
+    fig_height = max(4, len(labels) * 0.45)
+    fig, ax = plt.subplots(figsize=(11, fig_height))
+    ax.barh(labels[::-1], weights[::-1], color=colors[::-1])
+    for idx, row in enumerate(ordered[::-1]):
+        low, high = row.get("band_min_pct"), row.get("band_max_pct")
+        if low is not None and high is not None:
+            ax.plot([low, high], [idx, idx], color="#111827", linewidth=1.0, alpha=0.5)
+            ax.plot([low, low], [idx - 0.2, idx + 0.2], color="#111827", linewidth=1.0, alpha=0.5)
+            ax.plot([high, high], [idx - 0.2, idx + 0.2], color="#111827", linewidth=1.0, alpha=0.5)
+    ax.set_title("Basket Weights vs Policy Bands")
+    ax.set_xlabel("Portfolio weight (%)")
+    ax.grid(axis="x", alpha=0.25)
+
+    return _save_figure(fig, output_path, show=show)
+
+
+def plot_option_payoff(
+    spot_grid: List[float],
+    payoff: List[float],
+    output_path: str | Path,
+    breakevens: Optional[List[float]] = None,
+    spot: Optional[float] = None,
+    title: str = "Option Strategy Payoff at Expiry",
+    show: bool = False,
+) -> Path:
+    """Save an option strategy expiry-payoff diagram (P&L vs underlying price)."""
+    if not spot_grid or not payoff:
+        raise ValueError("Need a spot grid and payoff series to plot an option payoff.")
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.plot(spot_grid, payoff, color="#2563eb", linewidth=2.0)
+    ax.axhline(0, color="#6b7280", linewidth=0.9, linestyle="--")
+    ax.fill_between(spot_grid, payoff, 0, where=[p >= 0 for p in payoff], color="#16a34a", alpha=0.18)
+    ax.fill_between(spot_grid, payoff, 0, where=[p < 0 for p in payoff], color="#dc2626", alpha=0.18)
+    for be in breakevens or []:
+        ax.axvline(be, color="#7c3aed", linewidth=1.0, linestyle=":")
+        ax.annotate(f"BE {be:g}", xy=(be, 0), xytext=(be, max(payoff) * 0.1),
+                    color="#7c3aed", fontsize=8, ha="center")
+    if spot is not None:
+        ax.axvline(spot, color="#111827", linewidth=1.0, alpha=0.6)
+        ax.annotate(f"Spot {spot:g}", xy=(spot, 0), xytext=(spot, min(payoff) * 0.5),
+                    color="#111827", fontsize=8, ha="center")
+    ax.set_title(title)
+    ax.set_xlabel("Underlying price at expiry ($)")
+    ax.set_ylabel("Position P&L ($)")
+    ax.grid(True, alpha=0.25)
+
+    return _save_figure(fig, output_path, show=show)
+
+
 def plot_asset_allocation(
     rows: List[AssetAllocationRow],
     output_path: str | Path,

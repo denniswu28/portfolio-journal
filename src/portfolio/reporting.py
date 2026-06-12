@@ -57,6 +57,19 @@ SUPPLEMENTAL_SUMMARY_FIELDS = [
     "weight_pct",
 ]
 
+BASKET_SUMMARY_FIELDS = [
+    "basket",
+    "sleeve",
+    "value",
+    "weight_pct",
+    "holdings",
+    "band_min_pct",
+    "band_max_pct",
+    "band_status",
+    "unrealized_pnl",
+    "top_holding",
+]
+
 PERIODIC_RETURN_FIELDS = [
     "period_end_date",
     "return_type",
@@ -228,6 +241,17 @@ def write_style_exposure_summary(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     _write_csv(path, SUPPLEMENTAL_SUMMARY_FIELDS, summarize_style_exposure(rows))
+    return path
+
+
+def write_basket_summary(
+    basket_metrics: List[dict],
+    output_path: str | Path,
+) -> Path:
+    """Write per-basket value, weight, P&L, and policy-band status."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(path, BASKET_SUMMARY_FIELDS, basket_metrics)
     return path
 
 

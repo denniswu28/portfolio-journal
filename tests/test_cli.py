@@ -1,6 +1,7 @@
 """CLI regression tests for the Fidelity-only workflow."""
 
 import json
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -277,3 +278,97 @@ def test_rebalance_weights_writes_reports(monkeypatch, tmp_path):
     assert "Portfolio Theory Rebalance" in result.output
     assert list(report_dir.glob("rebalance_weights_*.csv"))
     assert list(report_dir.glob("rebalance_plan_*.md"))
+
+
+def test_basket_plan_shows_decomposition_and_resizes(monkeypatch, tmp_path):
+    runner = CliRunner()
+    settings = _make_settings(tmp_path)
+    monkeypatch.setattr(main_module, "_load_config", lambda: (settings, PersistentContext()))
+    csv_path = _write_csv(tmp_path)
+
+    sync_result = runner.invoke(cli, ["sync", "--input-file", str(csv_path)])
+    assert sync_result.exit_code == 0
+
+    # No --basket: show the decomposition (offline, no new tickers).
+    show = runner.invoke(cli, ["basket-plan"])
+    assert show.exit_code == 0
+    assert "Tech" in show.output
+
+    # Method B resize on an existing basket needs no network.
+    report_dir = tmp_path / "reports"
+    resize = runner.invoke(
+        cli,
+        ["basket-plan", "--basket", "Tech", "--resize-by", "-100", "--output-dir", str(report_dir)],
+    )
+    assert resize.exit_code == 0
+    assert "Method B - resize" in resize.output
+    assert list(report_dir.rglob("basket_plan_*.md"))
+
+
+def test_options_analyze_writes_ticket(monkeypatch, tmp_path):
+    runner = CliRunner()
+    settings = _make_settings(tmp_path)
+    monkeypatch.setattr(main_module, "_load_config", lambda: (settings, PersistentContext()))
+    report_dir = tmp_path / "reports"
+
+    # Fully specified spot + vol + expiry -> no network access required.
+    result = runner.invoke(
+        cli,
+        [
+            "options-analyze", "--underlying", "SMH", "--structure", "bull-put-spread",
+            "--strikes", "580,530", "--expiry", "2026-07-17", "--vol", "0.30",
+            "--rate", "0.043", "--spot", "632", "--output-dir", str(report_dir),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "bull put spread" in result.output
+    assert "Max profit" in result.output
+    assert list(report_dir.rglob("option_ticket_*.md"))
+    assert list(report_dir.rglob("option_payoff_*.png"))
+
+
+def test_log_option_then_monitor(monkeypatch, tmp_path):
+    runner = CliRunner()
+    settings = {
+        **_make_settings(tmp_path),
+        "options_history_file": str(tmp_path / "options_history.json"),
+        "options_positions_file": str(tmp_path / "options_positions.json"),
+    }
+    monkeypatch.setattr(main_module, "_load_config", lambda: (settings, PersistentContext()))
+
+    expiry = (date.today() + timedelta(days=40)).isoformat()
+    logged = runner.invoke(
+        cli,
+        [
+            "log-option", "-u", "SMH", "--structure", "bull-put-spread",
+            "--strikes", "580,530", "--expiry", expiry, "--net-debit", "-553",
+            "--rationale", "boist put-sell", "--tags", "boist",
+        ],
+    )
+    assert logged.exit_code == 0, logged.output
+    assert Path(settings["options_positions_file"]).exists()
+
+    # Monitor offline: mock the market-data calls.
+    monkeypatch.setattr(main_module, "get_current_prices", lambda tickers: {t: 600.0 for t in tickers})
+    monkeypatch.setattr(main_module, "realized_volatility", lambda u, w: 0.30)
+    report_dir = tmp_path / "monitor_reports"
+    monitored = runner.invoke(cli, ["monitor", "--rate", "0.04", "--output-dir", str(report_dir)])
+    assert monitored.exit_code == 0, monitored.output
+    assert list(report_dir.rglob("monitor_*.md"))
+
+
+def test_options_analyze_rejects_naked_call(monkeypatch, tmp_path):
+    runner = CliRunner()
+    settings = _make_settings(tmp_path)
+    monkeypatch.setattr(main_module, "_load_config", lambda: (settings, PersistentContext()))
+
+    result = runner.invoke(
+        cli,
+        [
+            "options-analyze", "--underlying", "SMH", "--leg", "SELL CALL 700",
+            "--expiry", "2026-07-17", "--vol", "0.30", "--rate", "0.043", "--spot", "632",
+            "--output-dir", str(tmp_path / "reports"),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Level-2 violations" in result.output or "REJECTED" in result.output
