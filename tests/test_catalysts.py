@@ -102,3 +102,41 @@ def test_advisory_run_has_catalysts_default():
     )
     assert run.catalysts.found is False
     assert "catalysts" in run.to_dict()
+
+
+from datetime import date
+from src.advisory.catalysts import find_latest_catalyst_file, build_catalyst_context
+
+
+def _write_brief(dir_path, d, body):
+    cat_dir = dir_path / "catalysts"
+    cat_dir.mkdir(parents=True, exist_ok=True)
+    (cat_dir / f"catalyst-{d}.yaml").write_text(body, encoding="utf-8")
+
+
+def test_find_latest_on_or_before(tmp_path):
+    _write_brief(tmp_path, "2026-06-10", "items:\n  - {ticker: A, direction: bull, summary: x}\n")
+    _write_brief(tmp_path, "2026-06-12", "items:\n  - {ticker: B, direction: bull, summary: y}\n")
+    found = find_latest_catalyst_file(date(2026, 6, 11), data_dir=tmp_path)
+    assert found is not None and found.name == "catalyst-2026-06-10.yaml"
+
+
+def test_build_context_missing_is_graceful(tmp_path):
+    ctx = build_catalyst_context(date(2026, 6, 12), data_dir=tmp_path)
+    assert ctx.found is False
+
+
+def test_build_context_near_term_and_staleness(tmp_path):
+    _write_brief(tmp_path, "2026-06-10", (
+        "as_of: 2026-06-10\n"
+        "items:\n"
+        "  - {ticker: NVDA, direction: bull, summary: earnings, event_date: 2026-06-12}\n"
+        "  - {ticker: MU, direction: bear, summary: far, event_date: 2026-09-01}\n"
+    ))
+    ctx = build_catalyst_context(
+        date(2026, 6, 11), data_dir=tmp_path,
+        snapshot_date=date(2026, 6, 11), event_horizon_days=30,
+    )
+    assert ctx.found is True
+    assert [i.ticker for i in ctx.near_term] == ["NVDA"]   # within 30d; MU excluded
+    assert ctx.stale_vs_snapshot is True                   # 06-10 < snapshot 06-11

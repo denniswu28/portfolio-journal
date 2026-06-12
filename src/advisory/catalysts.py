@@ -129,3 +129,65 @@ def parse_catalyst_paste(text: str) -> Tuple[CatalystContext, List[str]]:
     )
     ctx.digest = _digest(ctx)
     return ctx, warnings
+
+
+def find_latest_catalyst_file(as_of: date, data_dir: str | Path = "data") -> Optional[Path]:
+    """Return the newest data/catalysts/catalyst-YYYY-MM-DD.(yaml|yml) on/before as_of."""
+    directory = Path(data_dir) / "catalysts"
+    if not directory.exists():
+        return None
+    best: Optional[Path] = None
+    best_date: Optional[date] = None
+    for path in directory.glob("catalyst-*.y*ml"):
+        match = _FILE_RE.search(path.name)
+        if not match:
+            continue
+        try:
+            file_date = datetime.strptime(match.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if file_date <= as_of and (best_date is None or file_date > best_date):
+            best, best_date = path, file_date
+    return best
+
+
+def build_catalyst_context(
+    as_of: date,
+    data_dir: str | Path = "data",
+    explicit_file: Optional[str | Path] = None,
+    snapshot_date: Optional[date] = None,
+    event_horizon_days: int = 30,
+) -> CatalystContext:
+    """Locate + load the dated brief; degrade gracefully when absent or unreadable."""
+    path = Path(explicit_file) if explicit_file else find_latest_catalyst_file(as_of, data_dir)
+    if path is None or not Path(path).exists():
+        return CatalystContext(found=False)
+    try:
+        ctx, _warnings = parse_catalyst_paste(Path(path).read_text(encoding="utf-8", errors="replace"))
+    except CatalystValidationError:
+        return CatalystContext(found=False, path=str(path))
+
+    ctx.path = str(path)
+    match = _FILE_RE.search(Path(path).name)
+    if match and not ctx.catalyst_date:
+        ctx.catalyst_date = match.group(1)
+
+    horizon_end = as_of + timedelta(days=event_horizon_days)
+    near: List[CatalystItem] = []
+    for item in ctx.items:
+        if not item.event_date:
+            continue
+        try:
+            ev = datetime.strptime(item.event_date, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if as_of <= ev <= horizon_end:
+            near.append(item)
+    ctx.near_term = near
+
+    if ctx.catalyst_date and snapshot_date is not None:
+        try:
+            ctx.stale_vs_snapshot = datetime.strptime(ctx.catalyst_date, "%Y-%m-%d").date() < snapshot_date
+        except ValueError:
+            ctx.stale_vs_snapshot = False
+    return ctx
