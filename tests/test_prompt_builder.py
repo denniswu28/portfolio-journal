@@ -97,3 +97,45 @@ class TestGeneratePrompt:
         )
         assert isinstance(prompt, str)
         assert len(prompt) > 100
+
+
+class TestOptionsAndBasketContext:
+    def test_options_prompt_type_renders(self):
+        prompt = generate_prompt(
+            "options", make_snapshot(), [], None, make_context(), "Which puts should I sell?"
+        )
+        assert "Level 2" in prompt
+        assert "naked calls" in prompt
+        assert "Which puts should I sell?" in prompt
+
+    def test_basket_rows_injected(self):
+        basket_rows = [
+            {"basket": "AI Memory", "weight_pct": 7.4, "band_min_pct": 8.0,
+             "band_max_pct": 15.0, "band_status": "BELOW"},
+        ]
+        prompt = generate_prompt(
+            "trade", make_snapshot(), [], None, make_context(), "Plan",
+            basket_rows=basket_rows,
+        )
+        assert "AI Memory" in prompt
+        assert "BELOW" in prompt
+
+    def test_option_rows_and_risk_summary_injected(self):
+        option_rows = [
+            {"underlying": "SMH", "structure": "bull put spread", "mark": -120.0,
+             "pnl": 433.0, "pnl_pct": 78.0, "dte": 30},
+        ]
+        risk_summary = {
+            "net_delta": 14.0, "dollar_delta": 8800.0, "net_theta": 12.0,
+            "net_vega": -39.0, "sleeve_weight_pct": 9.5, "sleeve_status": "OK",
+        }
+        prompt = generate_prompt(
+            "options", make_snapshot(), [], None, make_context(), "Manage the book",
+            option_rows=option_rows, risk_summary=risk_summary,
+        )
+        assert "bull put spread" in prompt
+        assert "Options sleeve" in prompt
+
+    def test_templates_dict_has_options(self):
+        assert "options" in TEMPLATES
+

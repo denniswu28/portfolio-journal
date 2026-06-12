@@ -86,6 +86,21 @@ Cumulative Return: {{ "%+.2f"|format(cumulative_return) }}%
 {% else %}
 No trades recorded yet.
 {% endif %}
+{% if basket_rows %}
+## Baskets (weights vs policy bands)
+| Basket | Weight | Band | Status |
+|--------|--------|------|--------|
+{% for b in basket_rows -%}
+| {{ b.basket }} | {{ "%.1f"|format(b.weight_pct) }}% | {{ b.band_min_pct }}-{{ b.band_max_pct }}% | {{ b.band_status }} |
+{% endfor %}
+Change baskets only via Method A (recompose component %) or Method B (resize whole basket). Out-of-basket tickers are edited individually.
+{% endif %}
+{% if option_rows %}
+## Open option positions (deterministic marks)
+{% for o in option_rows -%}
+- {{ o.underlying }} {{ o.structure }}: mark ${{ "%.2f"|format(o.mark) }}, P&L ${{ "%.2f"|format(o.pnl) }} ({{ "%.0f"|format(o.pnl_pct) }}%), {{ o.dte }} DTE
+{% endfor %}
+{% endif %}
 
 ## Your Task
 {{ user_question }}
@@ -194,10 +209,60 @@ Identify:
 5. Recommended defensive actions
 """.strip()
 
+OPTIONS_PROMPT_TEMPLATE = """
+You are an options strategy assistant for a real brokerage portfolio (Level 2 + margin).
+
+## Mandate & Rules
+{{ strategy }}
+Risk tolerance: {{ risk_tolerance }} | Horizon: {{ horizon }}
+Hard constraints:
+{% for c in constraints %}- {{ c }}
+{% endfor %}
+Options policy: Level 2 + margin. Allowed: buy-writes, covered calls (+roll), long calls/puts, cash-secured puts, long straddles/strangles, spreads <= 4 legs, covered puts. FORBIDDEN: naked calls / undefined-risk short legs. Every order must be fully specified (underlying, right, strike(s), expiry/DTE, structure, action+direction per leg, net debit/credit, contracts/"hands", max loss/profit, breakevens, margin/assignment, exit rules). All pricing, greeks, payoff, and probabilities are deterministic (QuantLib); treat them as ground truth and never invent option numbers.
+
+## Portfolio ({{ timestamp }})
+Total Value: ${{ "%.2f"|format(total_value) }} | Cash: ${{ "%.2f"|format(cash) }} ({{ "%.1f"|format(cash_pct) }}%)
+{% if basket_rows %}
+### Baskets (weights vs policy bands)
+| Basket | Weight | Band | Status |
+|--------|--------|------|--------|
+{% for b in basket_rows -%}
+| {{ b.basket }} | {{ "%.1f"|format(b.weight_pct) }}% | {{ b.band_min_pct }}-{{ b.band_max_pct }}% | {{ b.band_status }} |
+{% endfor %}
+{% endif %}
+{% if option_rows %}
+### Open option positions (deterministic marks)
+| Underlying | Structure | Mark | P&L | P&L% | DTE |
+|---|---|---|---|---|---|
+{% for o in option_rows -%}
+| {{ o.underlying }} | {{ o.structure }} | ${{ "%.2f"|format(o.mark) }} | ${{ "%.2f"|format(o.pnl) }} | {{ "%.0f"|format(o.pnl_pct) }}% | {{ o.dte }} |
+{% endfor %}
+{% endif %}
+{% if risk_summary %}
+### Option book risk
+- Net delta: {{ "%.1f"|format(risk_summary.net_delta) }} (dollar-delta ${{ "%.0f"|format(risk_summary.dollar_delta) }})
+- Net theta/day: ${{ "%.0f"|format(risk_summary.net_theta) }} | Net vega/vol-pt: ${{ "%.0f"|format(risk_summary.net_vega) }}
+- Options sleeve: {{ "%.1f"|format(risk_summary.sleeve_weight_pct) }}% (status {{ risk_summary.sleeve_status }})
+{% endif %}
+
+## Task
+{{ user_question }}
+
+Respond with fully-specified, Level-2-compliant option orders only (or HOLD). For each order give:
+1. Structure and legs (underlying, right, strike, expiry/DTE)
+2. Net debit/credit and contracts ("hands")
+3. Max loss/profit, breakevens, probability of profit
+4. Margin / buying-power and assignment notes
+5. Exit rules: take-profit, stop-loss, and time stop
+Never propose naked calls or undefined-risk short legs. Defer to the deterministic numbers above.
+""".strip()
+
+
 TEMPLATES = {
     "trade": TRADE_INSTRUCTIONS_TEMPLATE,
     "review": REVIEW_TEMPLATE,
     "risk": RISK_CHECK_TEMPLATE,
+    "options": OPTIONS_PROMPT_TEMPLATE,
 }
 
 
@@ -210,6 +275,9 @@ def _build_context(
     persistent_ctx: PersistentContext,
     question: str,
     analysis_bundle: Optional[FidelityAnalysisBundle] = None,
+    basket_rows: Optional[List[dict]] = None,
+    option_rows: Optional[List[dict]] = None,
+    risk_summary: Optional[dict] = None,
 ) -> dict:
     """Assemble all Jinja2 template variables into a single context dict."""
     cash_pct = (
@@ -234,6 +302,9 @@ def _build_context(
         "analysis_summary": _build_analysis_summary(analysis_bundle),
         "recent_trades": recent_trades,
         "user_question": question,
+        "basket_rows": basket_rows,
+        "option_rows": option_rows,
+        "risk_summary": risk_summary,
     }
 
 
@@ -275,6 +346,9 @@ def generate_prompt(
     persistent_ctx: PersistentContext,
     user_question: str,
     analysis_bundle: Optional[FidelityAnalysisBundle] = None,
+    basket_rows: Optional[List[dict]] = None,
+    option_rows: Optional[List[dict]] = None,
+    risk_summary: Optional[dict] = None,
 ) -> str:
     """
     Render a fully formatted LLM prompt ready to paste into any AI assistant.
@@ -307,6 +381,9 @@ def generate_prompt(
         persistent_ctx,
         user_question,
         analysis_bundle=analysis_bundle,
+        basket_rows=basket_rows,
+        option_rows=option_rows,
+        risk_summary=risk_summary,
     )
     template = Template(template_str)
     return template.render(**context)
