@@ -430,3 +430,29 @@ def test_catalyst_ingest_bad_paste_exits_nonzero(tmp_path):
         "--file", str(paste), "--data-dir", str(tmp_path),
     ])
     assert result.exit_code != 0
+    assert "rejected" in result.output.lower()
+
+
+def test_catalyst_ingest_folds_non_ascii(tmp_path):
+    # LLM pastes routinely carry smart quotes / em-dashes; the stored file must be
+    # clean ASCII (folded), not raw Unicode. Smart chars are built at runtime via
+    # chr() so this source file itself stays ASCII.
+    runner = CliRunner()
+    smart_quote = chr(0x2019)
+    em_dash = chr(0x2014)
+    paste = tmp_path / "smart.txt"
+    paste.write_text(
+        "items:\n"
+        "  - ticker: NVDA\n"
+        "    direction: bull\n"
+        '    summary: "Nvidia' + smart_quote + "s order " + em_dash + ' strong"\n',
+        encoding="utf-8",
+    )
+    result = runner.invoke(cli, [
+        "catalyst-ingest", "--date", "2026-06-12",
+        "--file", str(paste), "--data-dir", str(tmp_path),
+    ])
+    assert result.exit_code == 0, result.output
+    stored = (tmp_path / "catalysts" / "catalyst-2026-06-12.yaml").read_text(encoding="utf-8")
+    assert stored.isascii()                 # no raw Unicode, no escapes
+    assert "order -- strong" in stored      # em-dash folded to --

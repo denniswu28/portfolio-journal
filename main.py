@@ -2118,6 +2118,28 @@ def catalyst_prompt(as_of_text, snapshot_path, universe_path, event_horizon_days
                "`catalyst-ingest --date " + as_of.isoformat() + " --file <pasted.txt>`.")
 
 
+# Common "smart" punctuation from LLM pastes -> ASCII (project rule: ASCII-only
+# files). Keys are integer codepoints so this source file itself stays ASCII;
+# str.translate accepts an int->str mapping directly.
+_SMART_PUNCT = {
+    0x2018: "'", 0x2019: "'", 0x201a: "'", 0x201b: "'",
+    0x201c: '"', 0x201d: '"', 0x201e: '"',
+    0x2013: "-", 0x2014: "--", 0x2212: "-",
+    0x2026: "...", 0x00a0: " ", 0x202f: " ", 0x00b7: "*",
+}
+
+
+def _fold_to_ascii(value):
+    """Recursively fold catalyst text to clean ASCII (smart quotes/dashes -> ASCII)."""
+    if isinstance(value, str):
+        return value.translate(_SMART_PUNCT).encode("ascii", "ignore").decode("ascii")
+    if isinstance(value, dict):
+        return {k: _fold_to_ascii(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_fold_to_ascii(v) for v in value]
+    return value
+
+
 @cli.command("catalyst-ingest")
 @click.option("--date", "as_of_text", required=True, help="Brief date YYYY-MM-DD.")
 @click.option("--file", "in_file", default=None, help="File with the pasted YAML (else read stdin).")
@@ -2130,6 +2152,9 @@ def catalyst_ingest(as_of_text, in_file, use_stdin, data_dir):
         text = Path(in_file).read_text(encoding="utf-8")
     elif use_stdin or not sys.stdin.isatty():
         text = sys.stdin.read()
+        if not text.strip():
+            click.secho("Stdin was empty. Pipe the pasted YAML or use --file.", fg="red")
+            sys.exit(1)
     else:
         click.secho("Provide --file PATH or pipe the paste via --stdin.", fg="red")
         sys.exit(1)
@@ -2147,6 +2172,8 @@ def catalyst_ingest(as_of_text, in_file, use_stdin, data_dir):
         "items": [i.to_dict() for i in ctx.items],
         "freeform_notes": ctx.freeform_notes,
     }
+    # Fold LLM "smart" punctuation so the stored file is clean ASCII (not \uXXXX escapes).
+    payload = _fold_to_ascii(payload)
     cat_dir = Path(data_dir) / "catalysts"
     cat_dir.mkdir(parents=True, exist_ok=True)
     out_path = cat_dir / f"catalyst-{as_of.isoformat()}.yaml"
