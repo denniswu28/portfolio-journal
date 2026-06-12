@@ -21,6 +21,14 @@ def _fmt_money(value) -> str:
         return "n/a"
 
 
+def _safe_cell(value) -> str:
+    """Sanitize free-text (LLM-sourced) for a markdown table cell: a literal '|'
+    would inject extra columns and break the table, so swap it for '/'."""
+    if not value:
+        return "-"
+    return str(value).replace("|", "/").replace("\n", " ").strip() or "-"
+
+
 def render_markdown(run: AdvisoryRun) -> str:
     lines: List[str] = []
     a = lines.append
@@ -111,19 +119,20 @@ def render_markdown(run: AdvisoryRun) -> str:
             a("| Direction | Summary | Date | Source |")
             a("|---|---|---|---|")
             for m in cat.macro:
-                a(f"| {m.direction} | {m.summary} | {m.event_date or '-'} | {m.source_url or '-'} |")
+                a(f"| {m.direction} | {_safe_cell(m.summary)} | {m.event_date or '-'} | "
+                  f"{_safe_cell(m.source_url)} |")
             a("")
         if cat.items:
             a("**Per-ticker:**")
             a("| Ticker | Direction | Summary | Date | Confidence | Source |")
             a("|---|---|---|---|---|---|")
             for it in cat.items:
-                a(f"| {it.ticker} | {it.direction} | {it.summary} | {it.event_date or '-'} | "
-                  f"{it.confidence or '-'} | {it.source_url or '-'} |")
+                a(f"| {it.ticker} | {it.direction} | {_safe_cell(it.summary)} | "
+                  f"{it.event_date or '-'} | {it.confidence or '-'} | {_safe_cell(it.source_url)} |")
             a("")
         if cat.near_term:
             a("**Near-term catalysts (reduce size into events):** "
-              + ", ".join(f"{it.ticker} ({it.event_date})" for it in cat.near_term))
+              + ", ".join(f"{it.ticker} ({it.event_date or '-'})" for it in cat.near_term))
             a("")
         if cat.freeform_notes:
             a("> " + cat.freeform_notes.replace("\n", "\n> "))

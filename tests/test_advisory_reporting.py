@@ -116,3 +116,19 @@ def test_report_degrades_without_catalysts():
     run.catalysts = CatalystContext(found=False)
     md = render_markdown(run)
     assert "No catalyst brief" in md
+
+
+def test_report_sanitizes_pipe_in_catalyst_summary():
+    # A literal '|' in an LLM-pasted summary would inject extra markdown columns;
+    # it must be swapped so the per-ticker row keeps its 6 cells.
+    run = _run_with_catalysts()
+    run.catalysts = CatalystContext(
+        found=True,
+        items=[CatalystItem(ticker="MU", direction="bear",
+                            summary="rates | Fed decision soon")],
+    )
+    md = render_markdown(run)
+    assert "rates | Fed decision" not in md          # raw pipe removed
+    assert "rates / Fed decision soon" in md         # swapped to '/'
+    row = next(ln for ln in md.splitlines() if ln.startswith("| MU |"))
+    assert row.count("|") == 7                        # 6 cells -> 7 delimiters
